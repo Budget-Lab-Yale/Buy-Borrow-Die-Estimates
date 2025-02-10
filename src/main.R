@@ -57,5 +57,5 @@ budget_window = 2026:2035
 
 # 2) choose baseline and sensitivity parameter values
 
-# 3) execute functions and 
+# 3) execute functions and produce tables
 

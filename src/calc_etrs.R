@@ -64,7 +64,7 @@ calc_etr = function(df) {
       pv_V = V * exp(-(i + pi) * n),
       
       # Calculate ETR
-      pv_V_notax = (1 - C) * exp((r - i) * n),
+      pv_V_notax = (1 - C * (1 - b_share)) * exp((r - i) * n) - (C * b_share),
       etr        = 1 - (C + pv_V) / (C + pv_V_notax)
       
     ) %>% 
@@ -119,20 +119,22 @@ calc_delta_etr = function(df) {
 
 
 
-# tibble(
-#   C = 0.5, 
-#   b_share = 0,
-#   b = 0.5, 
-#   tau_B = 0,
-#   tau_W = 0, 
-#   tau_S = 0.238, 
-#   tau_D = 0, 
-#   tau_e = 0, 
-#   n = 10, 
-#   r = 0.07, 
-#   i  = 0.06, 
-#   pi = 0.02
-# ) %>% 
-#   calc_etr() 
+tibble(
+  C = 0.5,
+  b_share = 0,
+  b = 0.5,
+  tau_B = 0,
+  tau_W = 0,
+  tau_S = 0.238,
+  tau_D = 0,
+  tau_e = 0,
+  n = 10,
+  r = 0.07,
+  i  = 0.03,
+  pi = 0.02
+) %>%
+  calc_delta_etr() %>% 
+  pivot_longer(everything()) %>% 
+  print(n = 50)
 
 

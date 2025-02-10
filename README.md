@@ -1,2 +1,2 @@
-# buy-borrow-die
-SCF-based estimates of buy-borrow-die reform options
+# Buy-Borrow-Die-Estimates
+SCF-based estimates of buy-borrow-die reform options.

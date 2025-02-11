@@ -48,7 +48,8 @@ macro_projections = read_macro_projections()
 # Read, process, and age SCF data through 2024
 augmented_scf = process_scf() %>% 
   age_scf_historical(macro_projections) %>% 
-  add_forbes_data()
+  add_forbes_data() %>% 
+  impute_borrowing_flows()
 
 
 # 3) read 2009 SCF, estimate model of annual borrowing, and impute   

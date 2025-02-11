@@ -213,7 +213,7 @@ add_forbes_data = function(augmented_scf) {
     filter(net_worth >= 500e6) %>%
     summarise(
       across(
-        .cols = c(all_of(net_worth_components), income, starts_with('kg_')), 
+        .cols = c(all_of(net_worth_components), wages, income, starts_with('kg_')), 
         .fns  = ~ sum(. * weight) / sum(net_worth * weight)
       )
     )
@@ -236,18 +236,20 @@ add_forbes_data = function(augmented_scf) {
       )
     ) %>% 
     
-    # Add other variables and remove extraneous Forbes info (caps age at 100 to
+    # Add other variables and remove extraneous Forbes info. Caps age at 100 to
     # match CBO's demographic groups, and assigns average age for those with 
-    # missing age)
+    # missing age. Assumes all are married and has one child (non-NA values are 
+    # required for imputation models but have ~zero bearing on results).
     mutate(
-      weight  = 1,
-      age     = pmin(100, if_else(is.na(age), round(mean(age, na.rm = T)), age)),  
-      married = 1, 
-      id      = 1000000 + row_number()
+      weight   = 1,
+      age      = pmin(100, if_else(is.na(age), round(mean(age, na.rm = T)), age)),  
+      married  = 1, 
+      n_kids   = 1,
+      id       = 1000000 + row_number()
     ) %>% 
     select(
-      id, weight, name = full_name, age, married, 
-      all_of(net_worth_components), income, starts_with('kg')
+      id, weight, name = full_name, age, married, n_kids,
+      all_of(net_worth_components), wages, income, starts_with('kg')
     )
   
   # Remove billionaires from SCF, add forbes, and return
@@ -322,7 +324,7 @@ process_scf_panel = function() {
   # Read raw data
   file_paths$scf_2009_panel %>%
     file.path('SCFP2009panel.csv') %>% 
-    read_csv(show_col_types = T) %>% 
+    read_csv(show_col_types = F) %>% 
     
     # Reshape long in year
     rename(id = Y1, weight = WGT09) %>% 
@@ -347,12 +349,10 @@ process_scf_panel = function() {
       other_debt       = ODEBT + OTHINST
     ) %>% 
     
-    
     # Construct other variables
     mutate(
       married = as.integer(MARRIED == 1), 
     ) %>% 
-    
     
     # Reshape wide in year
     pivot_wider(
@@ -387,13 +387,14 @@ process_scf_panel = function() {
       student_loans_07,    student_loans_09,  
       auto_loans_07,       auto_loans_09,  
       other_debt_07,       other_debt_09
+      
     ) %>% 
     return()
 }
 
   
 
-impute_borrowing_flows = function(augmented_scf, models) {
+impute_borrowing_flows = function(augmented_scf) {
   
   #----------------------------------------------------------------------------
   # Reads 2009 SCF panel, creates new net worth classes, and extracts 
@@ -401,58 +402,80 @@ impute_borrowing_flows = function(augmented_scf, models) {
   # 
   # Parameters:
   #   - augmented_scf (df)   : SCF + Forbes data projected through 2024
-  #   - models        (list) : list of model objects (see 
-  #                            estimate_borrowing_model())
   #
   # Output: processed 2009 SCF panel (df).
   #----------------------------------------------------------------------------
 
-  # Impute new borrowing for augmented SCF
-  imputations = augmented_scf %>%
-    
-    # Add required X variables
+  # Estimate quantile regression forest models
+  models = estimate_borrowing_model()
+  
+  # Add required X variables to 2024 SCF
+  imputation_data = augmented_scf %>%
     mutate(
-      has_wages = as.integer(wages > 0),
-      income    = income + if_else(income != 0, runif(nrow(.)), 0), # Add noise to create unique percentile cutoffs 
-      net_worth = cash + equities + bonds + retirement + life_ins + annuities + 
-                  trusts + other_fin + pass_throughs + primary_home + other_home + 
-                  re_fund + other_nonfin - primary_mortgage - other_mortgage - 
-                  credit_lines - credit_cards - student_loans - auto_loans - other_debt,
+      has_wages    = as.integer(wages > 0),
+      has_kids     = n_kids > 0, 
+      taxable_debt = credit_lines + other_debt + other_mortgage,
+      taxable_debt = taxable_debt + if_else(taxable_debt != 0, runif(nrow(.)), 0), # Add noise to create unique percentile cutoffs 
+      income       = income + if_else(income != 0, runif(nrow(.)), 0), # Add noise to create unique percentile cutoffs 
+      net_worth    = assets - primary_mortgage - other_mortgage - 
+                     credit_lines - credit_cards - student_loans - auto_loans - other_debt,
       across(
-        .cols = c(income, net_worth), 
+        .cols = c(income, assets, taxable_debt, net_worth), 
         .fns  = ~ cut(
           x      = ., 
-          breaks = wtd.quantile(.[. > 0], weight[. > 0], 0:100/100), 
-          labels = 1:100
-        ) %>% as.character() %>% as.integer() %>% replace_na(0), 
+          breaks = wtd.quantile(.[. > 0], weight[. > 0], c(seq(0, 0.99, 0.01), seq(0.991, 1, 0.001))), 
+          labels = c(seq(0.01, 0.99, 0.01), seq(0.991, 1, 0.001))
+        ) %>% as.character() %>% as.numeric() %>% replace_na(0), 
         .names = 'pctile_{col}'
-      ),
-    ) %>%
+      )
+    )
     
-    # Sample predictions
-    select(id, weight, age1, n_kids, married, pctile_income, pctile_wages) %>%
+  
+  # Fit values for those with taxable debt
+  with_debt = imputation_data %>%
+    filter(taxable_debt > 0) %>% 
+    select(id, age, has_kids, married, has_wages, pctile_income, pctile_assets, pctile_taxable_debt, pctile_net_worth, taxable_debt) %>% 
     mutate(
-      pct_chg_borrowing = predict(
-        object  = models$model_with_debt,
-        newdata = (.),
-        what    = function(x) sample(x, 1)
-      ), 
-      chg_borrowing = predict(
-        object  = models$model_without_debt,
+      yhat = predict(
+        object  = models$with_debt,
         newdata = (.),
         what    = function(x) sample(x, 1)
       )
     ) %>% 
-    select(ends_with('chg_borrowing'))
-  
-  # Add to data, apply transformations, and return  
-  augmented_scf %>% 
+    mutate(chg_taxable_debt = taxable_debt * yhat) %>% 
+    select(id, chg_taxable_debt)
+    
+  # Fit values for those without taxable debt but with assets
+  without_debt_with_assets = imputation_data %>%
+    filter(taxable_debt == 0, assets > 0) %>% 
+    select(id, age, has_kids, married, has_wages, pctile_income, pctile_assets, pctile_net_worth, assets) %>% 
     mutate(
-      taxable_debt     = credit_lines + other_debt + other_mortgage,
-      new_taxable_debt = case_when(
-        taxable_debt > 0  ~ taxable_debt * (1 + imputations$pct_chg_borrowing), 
-        taxable_debt == 0 ~ imputations$chg_borrowing
+      yhat = predict(
+        object  = models$without_debt_with_assets,
+        newdata = (.),
+        what    = function(x) sample(x, 1)
       )
+    ) %>% 
+    mutate(chg_taxable_debt = assets * yhat) %>% 
+    select(id, chg_taxable_debt)
+  
+  # Fit values for those without taxable debt and assets
+  without_debt_without_assets = imputation_data %>%
+    filter(taxable_debt == 0, assets == 0) %>% 
+    mutate(
+      has_taxable_debt = runif(nrow(.)) < models$without_debt_without_assets$p, 
+      chg_taxable_debt = weighted.mean(imputation_data$assets, imputation_data$weight) * models$without_debt_without_assets$mean_share * has_taxable_debt
+    ) %>% 
+    select(id, chg_taxable_debt)
+  
+
+  # Add to data and return 
+  augmented_scf %>% 
+    left_join(
+      bind_rows(
+        with_debt, without_debt_with_assets, without_debt_without_assets
+      ), 
+      by = 'id'
     ) %>% 
     return()
 }

@@ -24,23 +24,6 @@ process_scf = function() {
     # Construct asset classes
     mutate(
       
-      # Financial 
-      cash       = LIQ + CDS, 
-      equities   = STOCKS + STMUTF + COMUTF, 
-      bonds      = BOND + SAVBND + TFBMUTF + GBMUTF + OBMUTF, 
-      retirement = IRAKH + THRIFT + FUTPEN + CURRPEN, 
-      life_ins   = CASHLI, 
-      annuities  = ANNUIT, 
-      trusts     = TRUSTS,
-      other_fin  = OTHFIN + OMUTF,
-      
-      # Nonfinancial
-      pass_throughs = BUS,
-      primary_home  = HOUSES,
-      other_home    = ORESRE,
-      re_fund       = NNRESRE,
-      other_nonfin  = VEHIC + OTHNFIN, 
-      
       # Debt
       primary_mortgage = MRTHEL, 
       other_mortgage   = RESDBT, 
@@ -59,21 +42,27 @@ process_scf = function() {
     
     # Subset to required variables
     select(
+      
+      # Demographics
       id     = Y1,
       weight = WGT, 
       age    = AGE, 
       n_kids = KIDS,
       married, 
-      income = INCOME,
       
+      # Income
+      income = INCOME,
+      wages  = WAGEINC,
+      
+      # Unrealized gains
       kg_primary_home  = KGHOUSE,
       kg_other_re      = KGORE, 
       kg_pass_throughs = KGBUS, 
       kg_other         = KGSTMF, 
       
-      cash, equities, bonds, retirement, life_ins, annuities, trusts, other_fin, 
-      pass_throughs, primary_home, other_home, re_fund, other_nonfin, primary_mortgage, 
-      other_mortgage, credit_lines, credit_cards, student_loans, auto_loans, other_debt
+      # Net worth
+      assets = ASSET, 
+      primary_mortgage, other_mortgage, credit_lines, credit_cards, student_loans, auto_loans, other_debt
       
     ) %>% 
     return()
@@ -112,22 +101,7 @@ age_scf_historical = function(augmented_scf, macro_projections) {
     mutate(
       across(.cols = -date, .fns = as.numeric), 
       
-      # Financial
-      cash       = FL153020005.Q + FL153030005.Q + FL153034005.Q,
-      equities   = LM153064105.Q + LM153081115.Q + LM153064205.Q,
-      bonds      = LM154022005.Q + LM153061105.Q + LM153061705.Q + LM153062005.Q + 
-                   LM153063005.Q + FL154023005.Q + FL153069005.Q + FL153065005.Q,
-      retirement = FL153040005.Q + FL153050005.Q, 
-      life_ins   = FL153040005.Q, 
-      trusts     = FL154090005.Q,
-      other_fin  = FL154090005.Q,
-      
-      # Nonfinancial
-      pass_throughs = FL152000005.Q,
-      primary_home  = LM155035015.Q,
-      other_home    = LM155035015.Q,
-      re_fund       = LM155035015.Q,
-      other_nonfin  = LM152010005.Q, 
+      assets = FL152000005.Q,	
       
       # Debt
       primary_mortgage = LM152010005.Q, 
@@ -139,10 +113,10 @@ age_scf_historical = function(augmented_scf, macro_projections) {
       other_debt       = FL154123005.Q, 
       
       # Unrealized capital gains
-      kg_primary_home  = primary_home,
-      kg_other_re      = other_home, 
-      kg_pass_throughs = pass_throughs, 
-      kg_other         = equities, 
+      kg_primary_home  = LM155035005.Q,
+      kg_other_re      = LM155035005.Q, 
+      kg_pass_throughs = LM153081115.Q, 
+      kg_other         = FL154090005.Q, 
       
     ) %>% 
     select(-contains('.')) %>%
@@ -224,19 +198,14 @@ add_forbes_data = function(augmented_scf) {
   # Output: updated SCF data with Forbes 2024 billionaires added (df).
   #----------------------------------------------------------------------------
   
-  net_worth_components = c('cash', 'equities', 'bonds', 'retirement', 'life_ins', 
-                           'annuities', 'trusts', 'other_fin', 'pass_throughs', 
-                           'primary_home', 'other_home', 're_fund', 'other_nonfin', 
-                           'primary_mortgage', 'other_mortgage', 'credit_lines', 
+  net_worth_components = c('assets', 'primary_mortgage', 'other_mortgage', 'credit_lines', 
                            'credit_cards', 'student_loans', 'auto_loans', 'other_debt')
   
   # Add net worth to SCF
   augmented_scf = augmented_scf %>%
     mutate(
-      net_worth = cash + equities + bonds + retirement + life_ins + annuities + 
-                  trusts + other_fin + pass_throughs + primary_home + other_home + 
-                  re_fund + other_nonfin - primary_mortgage - other_mortgage - 
-                  credit_lines - credit_cards - student_loans - auto_loans - other_debt
+      net_worth = assets - primary_mortgage - other_mortgage - credit_lines - 
+                  credit_cards - student_loans - auto_loans - other_debt
     )
   
   # Estimate mean shares of net worth among SCF billionaires and near-billionaires
@@ -366,27 +335,9 @@ process_scf_panel = function() {
     pivot_wider() %>% 
     
     # Harmonize variable names and concepts with those of augmented SCF above
-    # TODO -- josh look into harmonization across 2022 + 2009  
     mutate(
       
-      # Financial 
-      cash       = LIQ + CDS, #????
-      equities   = STOCKS + NMMF, # ???
-      bonds      = BOND + SAVBND, #????
-      retirement = IRAKH + THRIFT, #???
-      life_ins   = CASHLI, #????
-      annuities  = ANNUIT, #????
-      trusts     = TRUSTS, #????
-      other_fin  = OTHFIN, #????
-      
-      # Nonfinancial
-      pass_throughs = BUS, #????
-      primary_home  = HOUSES, #????
-      other_home    = ORESRE, #????
-      re_fund       = NNRESRE, #????
-      other_nonfin  = VEHIC + OTHNFIN, #????
-      
-      # Debt
+      assets           = ASSET,
       primary_mortgage = MRTHEL, 
       other_mortgage   = RESDBT, 
       credit_lines     = OTHLOC,
@@ -411,30 +362,24 @@ process_scf_panel = function() {
     
     # Subset to required variables
     select(
+      
+      # Demographics
       id, 
       weight, 
       age     = AGE_07, 
       n_kids  = KIDS_07,
       married = married_07, 
       
+      # Income
       income_07  = INCOME_07, 
       income_09  = INCOME_09,
       wages_07   = WAGEINC_07,
       wages_09   = WAGEINC_09,
       
-      cash_07,             cash_09,
-      equities_07,         equities_09,  
-      bonds_07,            bonds_09,  
-      retirement_07,       retirement_09,  
-      life_ins_07,         life_ins_09,  
-      annuities_07,        annuities_09,  
-      trusts_07,           trusts_09,  
-      other_fin_07,        other_fin_09,  
-      pass_throughs_07,    pass_throughs_09,  
-      primary_home_07,     primary_home_09,  
-      other_home_07,       other_home_09,  
-      re_fund_07,          re_fund_09,  
-      other_nonfin_07,     other_nonfin_09,  
+      # Assets
+      assets_07, assets_09,
+      
+      # Debt
       primary_mortgage_07, primary_mortgage_09,  
       other_mortgage_07,   other_mortgage_09,  
       credit_lines_07,     credit_lines_09,  

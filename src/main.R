@@ -13,6 +13,9 @@ library(quantregForest)
 # Configuration
 #---------------
 
+# Random seed
+set.seed(76)
+
 # Set data dependency file paths
 file_paths = list(
   

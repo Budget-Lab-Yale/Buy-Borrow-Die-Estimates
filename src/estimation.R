@@ -6,7 +6,7 @@
 
 
 
-estimate_borrowing_model = function() {
+estimate_borrowing_model = function(augmented_scf) {
   
   #----------------------------------------------------------------------------
   # Using the 2009 SCF panel, estimates a quantile regression forest model of
@@ -14,7 +14,8 @@ estimate_borrowing_model = function() {
   # 
   # Parameters: N/A
   #
-  # Output: TODO
+  # Output: list of model objects -- one for those with debt at t = 0, one 
+  #         for those without (list).
   #----------------------------------------------------------------------------
   
   # Use 2009 SCF panel as training data
@@ -29,12 +30,8 @@ estimate_borrowing_model = function() {
       # Interpolate for 2008 (TODO: something better?)
       taxable_debt_08 = (taxable_debt_09 + taxable_debt_07) / 2,
       
-      # Calculate change (y variable), with special code for cases with no debt at t = 0 
-      taxable_debt_pct_chg = if_else(
-        taxable_debt_07 == 0, 
-        -2,
-        taxable_debt_08 / taxable_debt_07 - 1
-      ),  
+      # Calculate change (y variable) 
+      taxable_debt_pct_chg = taxable_debt_08 / taxable_debt_07 - 1,
       
       # Assign percentiles
       income    = income_07 + if_else(income_07 != 0, runif(nrow(.)), 0), # Add noise to create unique percentile cutoffs 
@@ -54,96 +51,37 @@ estimate_borrowing_model = function() {
       ), 
       
       # Create other variables
-      has_wages = as.integer(wages_07 > 0) 
+      has_wages = as.integer(wages_07 > 0),
+      has_kids  = as.integer(n_kids > 0),
+      taxable_debt = taxable_debt_07
     )
     
+  # Estimate model parameters for those with debt in t = 0
+  # Y variable: percent change in debt from t = 0 to t = 1
+  train_with_debt = train %>% filter(taxable_debt > 0)
+  model_with_debt = quantregForest(
+    x        = train_with_debt[c('age', 'has_kids', 'married', 'has_wages', 
+                                 'pctile_income', 'pctile_net_worth', 'taxable_debt')],
+    y        = train_with_debt$pct_chg_taxable_debt, 
+    nthreads = parallel::detectCores(),
+    weights  = train_with_debt$weight,
+    mtry     = 7,
+    nodesize = 5
+  )
   
+  # Estimate model parameters for those without debt in t = 0 
+  # Y variable: debt in t = 1
+  train_without_debt = train %>% filter(taxable_debt == 0)
+  model_without_debt = quantregForest(
+    x        = train_without_debt[c('age', 'has_kids', 'married', 'has_wages', 
+                                    'pctile_income', 'pctile_net_worth')],
+    y        = train_without_debt$taxable_debt_08, 
+    nthreads = parallel::detectCores(),
+    weights  = train_without_debt$weight,
+    mtry     = 6,
+    nodesize = 5
+  )
   
-    
- 
-  quantregForest()
-   
+  return(list(model_with_debt, model_without_debt))
 }
-
-
-
-
-
-  # Create percentile variables
-  mutate(
-    wages  = if_else(wages > 0,  wages  + runif(nrow(.)), 0),
-    income = if_else(income > 0, income + runif(nrow(.)), 0),
-    across(
-      .cols = c(wages, income), 
-      .fns  = ~ cut(
-        x      = . , 
-        breaks = wtd.quantile(.[. > 0], weight[. > 0], 0:100/100), 
-        labels = 1:100
-      ) %>% as.character() %>% as.integer() %>% replace_na(0), 
-      .names = 'pctile_{col}'
-    ) 
-  ) %>% 
-  
-  # Recode kids and marital status variables to match PUF
-  mutate(
-    n_kids  = pmin(n_kids, 3), 
-    married = as.integer(married == 1)
-  )
-
-
-# Estimate model of presence auto loan interest  
-has_auto_qrf = quantregForest(
-  x        = scf[c('pctile_wages', 'pctile_income', 'n_kids', 'married', 'age1')],
-  y        = as.factor(scf$has_auto_int_exp), 
-  nthreads = parallel::detectCores(),
-  weights  = scf$weight,
-  mtry     = 4,
-  nodesize = 1
-)
-
-# Estimate model of auto loan interest among those with loans
-scf_int = scf %>% 
-  filter(auto_int_exp > 0)
-auto_qrf = quantregForest(
-  x        = scf_int[c('pctile_wages', 'pctile_income', 'n_kids', 'married', 'age1')],
-  y        = scf_int$auto_int_exp, 
-  nthreads = parallel::detectCores(),
-  weights  = scf_int$weight,
-  mtry     = 4,
-  nodesize = 5
-)
-
-
-# Impute on tax unit data observations
-auto_int_exp = tax_units %>% 
-  mutate(
-    n_kids = (
-      (!is.na(dep_age1) & dep_age1 <= 24) + 
-        (!is.na(dep_age2) & dep_age2 <= 24) + 
-        (!is.na(dep_age3) & dep_age3 <= 24)
-    ), 
-    across(
-      .cols = c(wages, income), 
-      .fns  = ~ cut(
-        x      = . , 
-        breaks = wtd.quantile(.[. > 0], weight[. > 0], 0:100/100), 
-        labels = 1:100
-      ) %>% as.character() %>% as.integer() %>% replace_na(0), 
-      .names = 'pctile_{col}'
-    ) 
-  ) %>% 
-  select(id, weight, age1, n_kids, married, pctile_income, pctile_wages) %>% 
-  mutate(
-    p = predict(
-      object  = has_auto_qrf, 
-      newdata = (.),
-      what    = function(x) mean(x - 1)
-    ),
-    auto_int_exp = pmin(max_ot, predict(
-      object  = auto_qrf, 
-      newdata = (.),
-      what    = function(x) sample(x, 1)
-    ) * (runif(nrow(.)) < p))
-  )
-
 

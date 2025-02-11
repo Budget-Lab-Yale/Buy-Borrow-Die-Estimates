@@ -448,5 +448,67 @@ process_scf_panel = function() {
 
   
 
+impute_borrowing_flows = function(augmented_scf, models) {
+  
+  #----------------------------------------------------------------------------
+  # Reads 2009 SCF panel, creates new net worth classes, and extracts 
+  # required variables.
+  # 
+  # Parameters:
+  #   - augmented_scf (df)   : SCF + Forbes data projected through 2024
+  #   - models        (list) : list of model objects (see 
+  #                            estimate_borrowing_model())
+  #
+  # Output: processed 2009 SCF panel (df).
+  #----------------------------------------------------------------------------
 
+  # Impute new borrowing for augmented SCF
+  imputations = augmented_scf %>%
+    
+    # Add required X variables
+    mutate(
+      has_wages = as.integer(wages > 0),
+      income    = income + if_else(income != 0, runif(nrow(.)), 0), # Add noise to create unique percentile cutoffs 
+      net_worth = cash + equities + bonds + retirement + life_ins + annuities + 
+                  trusts + other_fin + pass_throughs + primary_home + other_home + 
+                  re_fund + other_nonfin - primary_mortgage - other_mortgage - 
+                  credit_lines - credit_cards - student_loans - auto_loans - other_debt,
+      across(
+        .cols = c(income, net_worth), 
+        .fns  = ~ cut(
+          x      = ., 
+          breaks = wtd.quantile(.[. > 0], weight[. > 0], 0:100/100), 
+          labels = 1:100
+        ) %>% as.character() %>% as.integer() %>% replace_na(0), 
+        .names = 'pctile_{col}'
+      ),
+    ) %>%
+    
+    # Sample predictions
+    select(id, weight, age1, n_kids, married, pctile_income, pctile_wages) %>%
+    mutate(
+      pct_chg_borrowing = predict(
+        object  = models$model_with_debt,
+        newdata = (.),
+        what    = function(x) sample(x, 1)
+      ), 
+      chg_borrowing = predict(
+        object  = models$model_without_debt,
+        newdata = (.),
+        what    = function(x) sample(x, 1)
+      )
+    ) %>% 
+    select(ends_with('chg_borrowing'))
+  
+  # Add to data, apply transformations, and return  
+  augmented_scf %>% 
+    mutate(
+      taxable_debt     = credit_lines + other_debt + other_mortgage,
+      new_taxable_debt = case_when(
+        taxable_debt > 0  ~ taxable_debt * (1 + imputations$pct_chg_borrowing), 
+        taxable_debt == 0 ~ imputations$chg_borrowing
+      )
+    ) %>% 
+    return()
+}
 

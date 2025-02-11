@@ -446,6 +446,7 @@ impute_borrowing_flows = function(augmented_scf) {
     select(id, chg_taxable_debt)
     
   # Fit values for those without taxable debt
+  debt_growth_factor = weighted.mean(imputation_data$taxable_debt, imputation_data$weight) / models$taxable_debt_mean
   without_debt = imputation_data %>%
     filter(taxable_debt == 0) %>% 
     select(id, age, has_kids, married, has_wages, pctile_income, pctile_assets, pctile_net_worth) %>% 
@@ -456,7 +457,7 @@ impute_borrowing_flows = function(augmented_scf) {
         what    = function(x) sample(x, 1)
       )
     ) %>% 
-    mutate(chg_taxable_debt = weighted.mean(imputation_data$taxable_debt, imputation_data$weight) * yhat) %>% 
+    mutate(chg_taxable_debt = yhat * debt_growth_factor) %>% 
     select(id, chg_taxable_debt)
 
   # Add to data and return 

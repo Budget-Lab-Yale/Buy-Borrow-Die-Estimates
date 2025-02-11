@@ -33,9 +33,6 @@ estimate_borrowing_model = function() {
       # Calculate change (y variable) 
       pct_chg_taxable_debt = taxable_debt_08 / taxable_debt_07 - 1,
       
-      # Calculate taxable debt as a share of  (y variable)
-      taxable_debt_share = (taxable_debt_08 - taxable_debt_07) / weighted.mean(taxable_debt_07, weight),
-      
       # Assign percentiles
       income       = income_07 + if_else(income_07 != 0, runif(nrow(.)), 0), # Add noise to create unique percentile cutoffs 
       assets       = assets_07,
@@ -72,23 +69,27 @@ estimate_borrowing_model = function() {
   )
   
   # Estimate model parameters for those without taxable debt in t = 0
-  # Y variable: taxable debt as a share of t = 0 mean taxable debt
+  # Y variable: taxable debt at t = 1, level
   train_without_debt = train %>% filter(taxable_debt == 0)
   model_without_debt = quantregForest(
     x        = train_without_debt[c('age', 'has_kids', 'married', 'has_wages', 
                                     'pctile_income', 'pctile_assets', 'pctile_net_worth')],
-    y        = train_without_debt$taxable_debt_share, 
+    y        = train_without_debt$taxable_debt_08, 
     nthreads = parallel::detectCores(),
     weights  = train_without_debt$weight,
     mtry     = 7,
     nodesize = 5
   )
   
+  # Add mean taxable borrowing for scaling 
+  taxable_debt_mean = weighted.mean(train$taxable_debt_07, train$weight)
+  
   # Return models as a list
   return(
     list(
-      with_debt    = model_with_debt, 
-      without_debt = model_without_debt
+      with_debt         = model_with_debt, 
+      without_debt      = model_without_debt, 
+      taxable_debt_mean = taxable_debt_mean
     )
   )
 }

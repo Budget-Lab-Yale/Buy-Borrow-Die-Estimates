@@ -4,6 +4,7 @@
 # Contains functions to read, process, and project data
 #------------------------------------------------------------------------------
 
+
 process_scf = function() {
   
   #----------------------------------------------------------------------------
@@ -335,4 +336,111 @@ read_macro_projections = function() {
   
   return(macro_projections)
 }
+
+
+
+process_scf_panel = function() {
+  
+  #----------------------------------------------------------------------------
+  # Reads 2009 SCF panel, creates new net worth classes, and extracts 
+  # required variables.
+  # 
+  # Parameters: N/A
+  #
+  # Output: processed 2009 SCF panel (df).
+  #----------------------------------------------------------------------------
+  
+  # Read raw data
+  file_paths$scf_2009_panel %>%
+    file.path('SCFP2009panel.csv') %>% 
+    read_csv(show_col_types = T) %>% 
+    
+    # Reshape long in year
+    rename(id = Y1, weight = WGT09) %>% 
+    select(id, weight, ends_with('07'), ends_with('09')) %>% 
+    pivot_longer(cols = -c(id, weight)) %>% 
+    mutate(
+      year = str_sub(name, -2), 
+      name = str_sub(name, 1, -3)
+    ) %>% 
+    pivot_wider() %>% 
+    
+    # Harmonize variable names and concepts with those of augmented SCF above
+    # TODO -- josh look into harmonization across 2022 + 2009  
+    mutate(
+      
+      # Financial 
+      cash       = LIQ + CDS, #????
+      equities   = STOCKS + NMMF, # ???
+      bonds      = BOND + SAVBND, #????
+      retirement = IRAKH + THRIFT, #???
+      life_ins   = CASHLI, #????
+      annuities  = ANNUIT, #????
+      trusts     = TRUSTS, #????
+      other_fin  = OTHFIN, #????
+      
+      # Nonfinancial
+      pass_throughs = BUS, #????
+      primary_home  = HOUSES, #????
+      other_home    = ORESRE, #????
+      re_fund       = NNRESRE, #????
+      other_nonfin  = VEHIC + OTHNFIN, #????
+      
+      # Debt
+      primary_mortgage = MRTHEL, 
+      other_mortgage   = RESDBT, 
+      credit_lines     = OTHLOC,
+      credit_cards     = CCBAL,
+      student_loans    = EDNINST,
+      auto_loans       = VEHINST,
+      other_debt       = ODEBT + OTHINST
+    ) %>% 
+    
+    
+    # Construct other variables
+    mutate(
+      married = as.integer(MARRIED == 1), 
+    ) %>% 
+    
+    
+    # Reshape wide in year
+    pivot_wider(
+      names_from  = year, 
+      values_from = -c(id, weight)
+    ) %>% 
+    
+    # Subset to required variables
+    select(
+      id, 
+      weight, 
+      age     = AGE_07, 
+      n_kids  = KIDS_07,
+      married = married_07, 
+      
+      equities_07,         equities_09,  
+      bonds_07,            bonds_09,  
+      retirement_07,       retirement_09,  
+      life_ins_07,         life_ins_09,  
+      annuities_07,        annuities_09,  
+      trusts_07,           trusts_09,  
+      other_fin_07,        other_fin_09,  
+      pass_throughs_07,    pass_throughs_09,  
+      primary_home_07,     primary_home_09,  
+      other_home_07,       other_home_09,  
+      re_fund_07,          re_fund_09,  
+      other_nonfin_07,     other_nonfin_09,  
+      primary_mortgage_07, primary_mortgage_09,  
+      other_mortgage_07,   other_mortgage_09,  
+      credit_lines_07,     credit_lines_09,  
+      credit_cards_07,     credit_cards_09,  
+      student_loans_07,    student_loans_09,  
+      auto_loans_07,       auto_loans_09,  
+      other_debt_07,       other_debt_09
+    ) %>% 
+    return()
+}
+
+  
+
+
 

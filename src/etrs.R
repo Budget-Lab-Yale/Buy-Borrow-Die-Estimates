@@ -1,5 +1,5 @@
 #------------------------------------------------------------------------------
-# calc_etrs.R
+# etrs.R
 #
 # Contains functions to calculate stylized ETRs on sales and borrowing under 
 # different assumptions about financial conditions and tax law.

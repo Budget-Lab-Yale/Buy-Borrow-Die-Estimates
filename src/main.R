@@ -1,7 +1,7 @@
 #------------------------------------------------------------------------------
 # main.R
 # 
-# Entry point into calculations 
+# Entry point into calculations.
 #------------------------------------------------------------------------------
 
 library(tidyverse)
@@ -19,7 +19,8 @@ file_paths = list(
   scf_2022       = '/gpfs/gibbs/project/sarin/shared/raw_data/SCF/v1/2022/historical', 
   scf_2009_panel = '/gpfs/gibbs/project/sarin/shared/raw_data/SCF/v1/2009/historical',
   
-  # TODO other data...
+  # Macro projections file
+  macro_projections = '/gpfs/gibbs/project/sarin/shared/model_data/Macro-Projections/v3/2024111415/baseline',
   
   # Root for output files 
   output_root = './output'
@@ -34,9 +35,17 @@ budget_window = 2026:2035
 # Calculate revenue estimates
 #-----------------------------
 
-# 1) read and process macro projections (also get from wealth-tax-simulator)
+source('./src/data.R')
 
-# 2) read, process, and age 2022 SCF through end of budget window (mostly copy wealth-tax-simulator here)
+
+# Read macro projections
+macro_projections = read_macro_projections()
+
+# Read, process, and age SCF data through 2024
+augmented_scf = process_scf() %>% 
+  age_scf_historical(macro_projections) %>% 
+  add_forbes_data()
+
 
 # 3) read 2009 SCF, estimate model of annual borrowing, and impute   
 
@@ -52,6 +61,8 @@ budget_window = 2026:2035
 #----------------------------------
 # Calculate tax rate differentials
 #----------------------------------
+
+source('./src/calc_etrs.R')
 
 # 1) write functions for all the formulas
 

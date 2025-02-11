@@ -1,8 +1,8 @@
 #------------------------------------------------------------------------------
 # calc_etrs.R
 #
-# Calculates stylized ETRs on sales and borrowing under different assumptions
-# about financial conditions and tax law
+# Contains functions to calculate stylized ETRs on sales and borrowing under 
+# different assumptions about financial conditions and tax law.
 #------------------------------------------------------------------------------
 
 
@@ -27,8 +27,7 @@ calc_etr = function(df) {
   #       - i       : Real interest rate on debt
   #       - pi      : Inflation rate
   #
-  # Output:
-  #   - Returns a tibble with the original columns plus:
+  # Output: a tibble with the original columns plus:
   #       - B          : Borrowing required for given C
   #       - S          : Asset sales required for given C
   #       - T_B        : Tax on borrowing (deemed realization)
@@ -82,8 +81,7 @@ calc_delta_etr = function(df) {
   # Parameters:
   #   - df: A tibble containing all necessary input variables for `calc_etr()`
   #
-  # Output:
-  #   - Returns a tibble with the original columns plus:
+  # Output: a tibble with the original columns plus:
   #       - V.borrow/sell    : Estate value when financing via borrowing
   #       - pv_V.borrow/sell : PV of estate value when financing via sales
   #       - delta_etr        : Difference in ETRs (sales minus borrowing)
@@ -119,22 +117,22 @@ calc_delta_etr = function(df) {
 
 
 
-tibble(
-  C = 0.5,
-  b_share = 0,
-  b = 0.5,
-  tau_B = 0,
-  tau_W = 0,
-  tau_S = 0.238,
-  tau_D = 0,
-  tau_e = 0,
-  n = 10,
-  r = 0.07,
-  i  = 0.03,
-  pi = 0.02
-) %>%
-  calc_delta_etr() %>% 
-  pivot_longer(everything()) %>% 
-  print(n = 50)
-
+#tibble(
+#   C = 0.5,
+#   b_share = 0,
+#   b = 0.5,
+#   tau_B = 0,
+#   tau_W = 0,
+#   tau_S = 0.238,
+#   tau_D = 0,
+#   tau_e = 0,
+#   n = 10,
+#   r = 0.07,
+#   i  = 0.03,
+#   pi = 0.02
+# ) %>%
+#   calc_delta_etr() %>% 
+#   pivot_longer(everything()) %>% 
+#   print(n = 50)
+# 
 

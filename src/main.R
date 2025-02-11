@@ -40,19 +40,25 @@ budget_window = 2026:2035
 #-----------------------------
 
 source('./src/data.R')
-
+source('./src/estimation.R')
 
 # Read macro projections
 macro_projections = read_macro_projections()
 
-# Read, process, and age SCF data through 2024
+# Process 2022 SCF 
 augmented_scf = process_scf() %>% 
+  
+  # Project SCF though 2024
   age_scf_historical(macro_projections) %>% 
-  add_forbes_data() %>% 
+  
+  # Add billionaires
+  add_forbes_data() %>%
+  
+  # Impute net new borrowing based on 2009 SCF
   impute_borrowing_flows()
 
 
-# 3) read 2009 SCF, estimate model of annual borrowing, and impute   
+
 
 # 4) calculate tax liability under each reform option
 #     - option (1) is easy (cross-sectional joint function of borrowing and gains)

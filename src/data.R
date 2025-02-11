@@ -445,35 +445,27 @@ impute_borrowing_flows = function(augmented_scf) {
     mutate(chg_taxable_debt = taxable_debt * yhat) %>% 
     select(id, chg_taxable_debt)
     
-  # Fit values for those without taxable debt but with assets
-  without_debt_with_assets = imputation_data %>%
-    filter(taxable_debt == 0, assets > 0) %>% 
-    select(id, age, has_kids, married, has_wages, pctile_income, pctile_assets, pctile_net_worth, assets) %>% 
+  # Fit values for those without taxable debt
+  without_debt = imputation_data %>%
+    filter(taxable_debt == 0) %>% 
+    select(id, age, has_kids, married, has_wages, pctile_income, pctile_assets, pctile_net_worth) %>% 
     mutate(
       yhat = predict(
-        object  = models$without_debt_with_assets,
+        object  = models$without_debt,
         newdata = (.),
         what    = function(x) sample(x, 1)
       )
     ) %>% 
-    mutate(chg_taxable_debt = assets * yhat) %>% 
+    mutate(chg_taxable_debt = weighted.mean(imputation_data$taxable_debt, imputation_data$weight) * yhat) %>% 
     select(id, chg_taxable_debt)
-  
-  # Fit values for those without taxable debt and assets
-  without_debt_without_assets = imputation_data %>%
-    filter(taxable_debt == 0, assets == 0) %>% 
-    mutate(
-      has_taxable_debt = runif(nrow(.)) < models$without_debt_without_assets$p, 
-      chg_taxable_debt = weighted.mean(imputation_data$assets, imputation_data$weight) * models$without_debt_without_assets$mean_share * has_taxable_debt
-    ) %>% 
-    select(id, chg_taxable_debt)
-  
 
   # Add to data and return 
-  augmented_scf %>% 
+  augmented_scf %>%
+    mutate(taxable_debt = credit_lines + other_debt + other_mortgage) %>%  
     left_join(
       bind_rows(
-        with_debt, without_debt_with_assets, without_debt_without_assets
+        with_debt, 
+        without_debt
       ), 
       by = 'id'
     ) %>% 

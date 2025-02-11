@@ -417,6 +417,12 @@ process_scf_panel = function() {
       n_kids  = KIDS_07,
       married = married_07, 
       
+      income_07  = INCOME_07, 
+      income_09  = INCOME_09,
+      wages_07   = WAGEINC_07,
+      wages_09   = WAGEINC_09,
+      
+      cash_07,             cash_09,
       equities_07,         equities_09,  
       bonds_07,            bonds_09,  
       retirement_07,       retirement_09,  

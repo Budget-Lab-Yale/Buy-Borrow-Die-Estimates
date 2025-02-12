@@ -54,8 +54,9 @@ augmented_scf = process_scf() %>%
   # Add billionaires
   add_forbes_data() %>%
   
-  # Impute net new borrowing based on 2009 SCF
+  # Impute new borrowing based on 2009 SCF
   impute_borrowing_flows()
+
 
 
 

@@ -19,19 +19,20 @@ process_scf = function() {
   # Read raw bulletin summary 2022 SCF
   file_paths$scf_2022 %>%
     file.path('SCFP2022.csv') %>% 
-    read_csv(show_col_types = T) %>% 
+    read_csv(show_col_types = F) %>% 
     
     # Construct asset classes
     mutate(
       
       # Debt
-      primary_mortgage = MRTHEL, 
-      other_mortgage   = RESDBT, 
-      credit_lines     = OTHLOC,
-      credit_cards     = CCBAL,
-      student_loans    = EDN_INST,
-      auto_loans       = VEH_INST,
-      other_debt       = ODEBT + OTH_INST
+      primary_mortgage  = MRTHEL, 
+      other_mortgage    = RESDBT, 
+      credit_lines      = OTHLOC,
+      credit_cards      = CCBAL,
+      student_loans     = EDN_INST,
+      auto_loans        = VEH_INST,
+      other_installment = OTH_INST,
+      other_debt        = ODEBT 
     ) %>% 
     
     
@@ -62,7 +63,7 @@ process_scf = function() {
       
       # Net worth
       assets = ASSET, 
-      primary_mortgage, other_mortgage, credit_lines, credit_cards, student_loans, auto_loans, other_debt
+      primary_mortgage, other_mortgage, credit_lines, credit_cards, student_loans, auto_loans, other_installment, other_debt
       
     ) %>% 
     return()
@@ -104,13 +105,14 @@ age_scf_historical = function(augmented_scf, macro_projections) {
       assets = FL152000005.Q,	
       
       # Debt
-      primary_mortgage = LM152010005.Q, 
-      other_mortgage   = LM152010005.Q, 
-      credit_lines     = FL154123005.Q,
-      credit_cards     = FL153166000.Q,
-      student_loans    = FL154123005.Q,
-      auto_loans       = FL154123005.Q,
-      other_debt       = FL154123005.Q, 
+      primary_mortgage  = LM152010005.Q, 
+      other_mortgage    = LM152010005.Q, 
+      credit_lines      = FL154123005.Q,
+      credit_cards      = FL153166000.Q,
+      student_loans     = FL154123005.Q,
+      auto_loans        = FL154123005.Q,
+      other_installment = FL154123005.Q,
+      other_debt        = FL154123005.Q, 
       
       # Unrealized capital gains
       kg_primary_home  = LM155035005.Q,
@@ -198,14 +200,15 @@ add_forbes_data = function(augmented_scf) {
   # Output: updated SCF data with Forbes 2024 billionaires added (df).
   #----------------------------------------------------------------------------
   
-  net_worth_components = c('assets', 'primary_mortgage', 'other_mortgage', 'credit_lines', 
-                           'credit_cards', 'student_loans', 'auto_loans', 'other_debt')
+  net_worth_components = c('assets', 'primary_mortgage', 'other_mortgage', 
+                           'credit_lines', 'credit_cards', 'student_loans', 
+                           'auto_loans', 'other_installment', 'other_debt')
   
   # Add net worth to SCF
   augmented_scf = augmented_scf %>%
     mutate(
       net_worth = assets - primary_mortgage - other_mortgage - credit_lines - 
-                  credit_cards - student_loans - auto_loans - other_debt
+                  credit_cards - student_loans - auto_loans - other_installment - other_debt
     )
   
   # Estimate mean shares of net worth among SCF billionaires and near-billionaires
@@ -338,15 +341,15 @@ process_scf_panel = function() {
     
     # Harmonize variable names and concepts with those of augmented SCF above
     mutate(
-      
-      assets           = ASSET,
-      primary_mortgage = MRTHEL, 
-      other_mortgage   = RESDBT, 
-      credit_lines     = OTHLOC,
-      credit_cards     = CCBAL,
-      student_loans    = EDNINST,
-      auto_loans       = VEHINST,
-      other_debt       = ODEBT + OTHINST
+      assets            = ASSET,
+      primary_mortgage  = MRTHEL, 
+      other_mortgage    = RESDBT, 
+      credit_lines      = OTHLOC,
+      credit_cards      = CCBAL,
+      student_loans     = EDNINST,
+      auto_loans        = VEHINST,
+      other_installment = OTHINST,
+      other_debt        = ODEBT
     ) %>% 
     
     # Construct other variables
@@ -380,13 +383,14 @@ process_scf_panel = function() {
       assets_07, assets_09,
       
       # Debt
-      primary_mortgage_07, primary_mortgage_09,  
-      other_mortgage_07,   other_mortgage_09,  
-      credit_lines_07,     credit_lines_09,  
-      credit_cards_07,     credit_cards_09,  
-      student_loans_07,    student_loans_09,  
-      auto_loans_07,       auto_loans_09,  
-      other_debt_07,       other_debt_09
+      primary_mortgage_07,  primary_mortgage_09,  
+      other_mortgage_07,    other_mortgage_09,  
+      credit_lines_07,      credit_lines_09,  
+      credit_cards_07,      credit_cards_09,  
+      student_loans_07,     student_loans_09,  
+      auto_loans_07,        auto_loans_09,  
+      other_installment_07, other_installment_09,  
+      other_debt_07,        other_debt_09
       
     ) %>% 
     return()
@@ -397,17 +401,17 @@ process_scf_panel = function() {
 impute_borrowing_flows = function(augmented_scf) {
   
   #----------------------------------------------------------------------------
-  # Reads 2009 SCF panel, creates new net worth classes, and extracts 
-  # required variables.
+  # Imputes net new borrowing for all records in the current SCF given a model
+  # estimated on the 2009 SCF panel.
   # 
   # Parameters:
-  #   - augmented_scf (df)   : SCF + Forbes data projected through 2024
+  #   - augmented_scf (df)  : SCF + Forbes data projected through 2024
   #
   # Output: processed 2009 SCF panel (df).
   #----------------------------------------------------------------------------
 
-  # Estimate quantile regression forest models
-  models = estimate_borrowing_model()
+  # Estimate model of positive new borrowing based on SCF panel from 2007-2009
+  model = estimate_borrowing_model()
   
   # Add required X variables to 2024 SCF
   imputation_data = augmented_scf %>%
@@ -418,7 +422,8 @@ impute_borrowing_flows = function(augmented_scf) {
       taxable_debt = taxable_debt + if_else(taxable_debt != 0, runif(nrow(.)), 0), # Add noise to create unique percentile cutoffs 
       income       = income + if_else(income != 0, runif(nrow(.)), 0), # Add noise to create unique percentile cutoffs 
       net_worth    = assets - primary_mortgage - other_mortgage - 
-                     credit_lines - credit_cards - student_loans - auto_loans - other_debt,
+                     credit_lines - credit_cards - student_loans - 
+                     auto_loans - other_installment - other_debt,
       across(
         .cols = c(income, assets, taxable_debt, net_worth), 
         .fns  = ~ cut(
@@ -430,46 +435,31 @@ impute_borrowing_flows = function(augmented_scf) {
       )
     )
     
-  
-  # Fit values for those with taxable debt
-  with_debt = imputation_data %>%
-    filter(taxable_debt > 0) %>% 
-    select(id, age, has_kids, married, has_wages, pctile_income, pctile_assets, pctile_taxable_debt, pctile_net_worth, taxable_debt) %>% 
+  # Fit values
+  imputations = imputation_data %>%
+    select(
+      id, weight, age, has_kids, married, has_wages, taxable_debt, 
+      pctile_income, pctile_assets, pctile_taxable_debt, pctile_net_worth
+    ) %>% 
     mutate(
+      
+      # Fit values 
       yhat = predict(
-        object  = models$with_debt,
+        object  = model,
         newdata = (.),
         what    = function(x) sample(x, 1)
-      )
+      ), 
+      
+      # Scale to population mean of taxable debt
+      positive_taxable_borrowing = weighted.mean(taxable_debt, weight) * yhat
+      
     ) %>% 
-    mutate(chg_taxable_debt = taxable_debt * yhat) %>% 
-    select(id, chg_taxable_debt)
-    
-  # Fit values for those without taxable debt
-  debt_growth_factor = weighted.mean(imputation_data$taxable_debt, imputation_data$weight) / models$taxable_debt_mean
-  without_debt = imputation_data %>%
-    filter(taxable_debt == 0) %>% 
-    select(id, age, has_kids, married, has_wages, pctile_income, pctile_assets, pctile_net_worth) %>% 
-    mutate(
-      yhat = predict(
-        object  = models$without_debt,
-        newdata = (.),
-        what    = function(x) sample(x, 1)
-      )
-    ) %>% 
-    mutate(chg_taxable_debt = yhat * debt_growth_factor) %>% 
-    select(id, chg_taxable_debt)
+    select(id, new_borrowing)
 
   # Add to data and return 
   augmented_scf %>%
-    mutate(taxable_debt = credit_lines + other_debt + other_mortgage) %>%  
-    left_join(
-      bind_rows(
-        with_debt, 
-        without_debt
-      ), 
-      by = 'id'
-    ) %>% 
+    mutate(taxable_debt = credit_lines + other_debt + other_mortgage) %>% 
+    left_join(imputations, by = 'id') %>% 
     return()
 }
 

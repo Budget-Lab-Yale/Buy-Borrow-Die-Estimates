@@ -19,7 +19,7 @@ sim_option_1 = function(projected_scf, macro_projections, beta = 0.5) {
   #                                (see read_macro_projections)
   #   - beta               (dbl) : weight on record-level adjustment (0-1)
   #
-  # Output: TODO
+  # Output: dataframe of aggregate output from simulation.
   #----------------------------------------------------------------------------
   
   # Initialize tracking objects
@@ -58,7 +58,7 @@ sim_option_1 = function(projected_scf, macro_projections, beta = 0.5) {
       pull(micro_factor)
     
     # Calculate aggregate adjustment factor for unrealized capital gains based on deemed realization 
-    aggregate_factor = 1 - year_totals$total_realization / year_totals$kg
+    aggregate_factor = 1 - year_totals$deemed_realization / year_totals$unrealized_kg
   }
   
   return(totals)
@@ -90,8 +90,7 @@ calc_tax_option_1 = function(projected_scf, year, macro_projections) {
   
   # Adjust parameters for inflation
   inflation_factor = macro_projections$economic %>%
-    filter(year %in% c(2026, !!year)) %>%
-    summarise(factor = last(ccpiu_irs) / first(ccpiu_irs)) %>%
+    summarise(factor = ccpiu_irs[year == !!year] / ccpiu_irs[year == 2026]) %>%
     pull(factor)
   
   exemption = exemption * inflation_factor
@@ -104,7 +103,7 @@ calc_tax_option_1 = function(projected_scf, year, macro_projections) {
       borrowing_after_exemption = pmax(0, positive_taxable_borrowing - exemption),
       
       # Calculate deemed realization (limited by borrowing and available gains)
-      deemed_realization = pmin(borrowing_after_exemption, kg_pass_throughs + kg_other),
+      deemed_realization = pmax(0, borrowing_after_exemption - pmax(0, kg_pass_throughs - kg_other)),
       
       # Calculate tax on deemed realization
       borrowing_tax = deemed_realization * tax_rate
@@ -135,7 +134,7 @@ age_option_1 = function(scf, target_year, macro_projections, micro_factors,
   
 
   # Calculate demographic growth factors
-  demographic_growth = macro_projections$demographic %>% 
+  demographic_factors = macro_projections$demographic %>% 
     filter(year %in% c(target_year - 1, target_year)) %>%
     mutate(year = if_else(year == target_year, 'target_year', 'base_year')) %>% 
     pivot_wider(
@@ -145,8 +144,9 @@ age_option_1 = function(scf, target_year, macro_projections, micro_factors,
     mutate(demographic_factor = target_year / base_year) %>% 
     select(married, age, demographic_factor)
   
+  
   # Calculate per-capita economic growth rate
-  economic_growth = macro_projections$economic %>% 
+  economic_factor = macro_projections$economic %>% 
     filter(year %in% c(target_year - 1, target_year)) %>%
     left_join(
       macro_projections$demographic %>% 
@@ -166,15 +166,18 @@ age_option_1 = function(scf, target_year, macro_projections, micro_factors,
     mutate(economic_factor = target_year / base_year) %>% 
     pull(economic_factor)
   
+  
   # Calculate combined adjustment factor for unrealized gains
   kg_adjustment_factor = beta * micro_factors + (1 - beta) * aggregate_factor
   
-  # Age the SCF forward
+  
   scf %>%
+    
     # Join demographic factors
-    left_join(demographic_growth, by = c('married', 'age')) %>%
+    left_join(demographic_factors, by = c('married', 'age')) %>%
     
     mutate(
+      
       # Update weights for population growth
       weight = weight * demographic_factor,
       
@@ -214,26 +217,29 @@ get_totals_option_1 = function(year_results, year) {
   #   - year_results (df) : record-level results from calc_option_1_tax
   #   - year        (int) : current simulation year
   #
-  # Output: Data frame with aggregated results
+  # Output: dataframe with aggregated results.
   #----------------------------------------------------------------------------
   
   year_results %>%
     summarise(
       year = !!year,
       
-      # Total unrealized gains
-      kg = sum((kg_pass_throughs + kg_other) * weight),
+      # Total unrealized gains for assets that are eligible for deemed realization
+      unrealized_kg = sum((kg_pass_throughs + kg_other) * weight) / 1e9,
+      
+      # Total positive borrowing
+      taxable_positive_net_borrowing = sum(positive_taxable_borrowing * weight) / 1e9, 
+      
+      # Borrowing net of exemption 
+      taxable_borrowing_after_exemption = sum(borrowing_after_exemption * weight) / 1e9,
       
       # Total deemed realization
-      deemed_realization = sum(deemed_realization * weight),
+      deemed_realization = sum(deemed_realization * weight) / 1e9,
       
       # Tax revenue in billions
       tax = sum(borrowing_tax * weight) / 1e9,
       
-      # Effective tax rate (tax/gains)
-      effective_rate = tax / kg,
-      
-      # Share of gains realized
-      realization_rate = deemed_realization / kg
+      # Share of eligible gains constructively realized
+      realization_rate = deemed_realization / unrealized_kg
     )
 }

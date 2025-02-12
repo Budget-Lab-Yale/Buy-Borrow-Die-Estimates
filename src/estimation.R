@@ -1,7 +1,7 @@
 #------------------------------------------------------------------------------
 # estimation.R
 # 
-# TODO
+# Functions for estimating a model of net borrowing flows. 
 #------------------------------------------------------------------------------
 
 
@@ -9,7 +9,7 @@
 estimate_borrowing_model = function() {
   
   #----------------------------------------------------------------------------
-  # Using the 2009 SCF panel, estimates new positive borrowing as a function
+  # Using the 2009 SCF panel, estimates positive net borrowing as a function
   # of demographic and economic indicators using regression forests. 
   # Functional form has new borrowing scaled by mean taxable debt at t = 0.  
   # 

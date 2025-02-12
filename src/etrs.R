@@ -49,14 +49,14 @@ calc_etr = function(df) {
       # Calculate taxes due at time of consumption
       T_B = B * (1 - b) * tau_B,
       T_W = B * tau_W,
-      T_S = 0,
+      T_S = S * (1 - b) * tau_S,
       
       # Calculate assets and liabilities at death
       A = (1 - S) * exp((r + pi) * n),
       L = B * exp((i + pi + tau_e) * n),
       
       # Calculate taxes at death
-      T_D = B * (1 - b) * tau_D - T_B - T_W,
+      T_D = B * (1 - b) * tau_D - T_W,
       
       # Calculate value and present value  
       V    = A - L - T_D, 
@@ -117,22 +117,22 @@ calc_delta_etr = function(df) {
 
 
 
-#tibble(
+# tibble(
 #   C = 0.5,
-#   b_share = 0,
+#   b_share = 1,
 #   b = 0.5,
-#   tau_B = 0,
+#   tau_B = 0.238,
 #   tau_W = 0,
 #   tau_S = 0.238,
 #   tau_D = 0,
 #   tau_e = 0,
 #   n = 10,
-#   r = 0.07,
-#   i  = 0.03,
+#   r = 0.05,
+#   i  = 0.05,
 #   pi = 0.02
 # ) %>%
-#   calc_delta_etr() %>% 
-#   pivot_longer(everything()) %>% 
+#   calc_delta_etr() %>%
+#   pivot_longer(everything()) %>%
 #   print(n = 50)
-# 
+
 

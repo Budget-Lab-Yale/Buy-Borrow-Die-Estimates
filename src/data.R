@@ -1,7 +1,7 @@
 #------------------------------------------------------------------------------
 # data.R
 # 
-# Contains functions to read, process, and project data
+# Contains functions to read, process, and project data.
 #------------------------------------------------------------------------------
 
 
@@ -454,7 +454,7 @@ impute_borrowing_flows = function(augmented_scf) {
       positive_taxable_borrowing = weighted.mean(taxable_debt, weight) * yhat
       
     ) %>% 
-    select(id, new_borrowing)
+    select(id, positive_taxable_borrowing)
 
   # Add to data and return 
   augmented_scf %>%

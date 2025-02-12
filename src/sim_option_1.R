@@ -7,14 +7,14 @@
 
 
 
-sim_option_1 = function(projected_scf, macro_projections, beta = 0.5) {
+sim_option_1 = function(augmented_scf, macro_projections, beta = 0.5) {
   
   #----------------------------------------------------------------------------
   # Projects 10-year revenue under option 1, accounting for reduction in future
   # unrealized gains using a mixture of record-level and aggregate adjustments.
   # 
   # Parameters:
-  #   - projected_scf      (df)  : SCF+ data projected through start year
+  #   - augmented_scf      (df)  : SCF+ data projected through 2024
   #   - macro_projections  (lst) : economic and demographic projections
   #                                (see read_macro_projections)
   #   - beta               (dbl) : weight on record-level adjustment (0-1)
@@ -24,7 +24,8 @@ sim_option_1 = function(projected_scf, macro_projections, beta = 0.5) {
   
   # Initialize tracking objects
   totals = tibble()
-  current_scf = projected_scf
+  revenue_offset = tibble()
+  current_scf = augmented_scf
   
   # Initialize unrealized gain adjustment factors to 1 (pre-enactment) 
   micro_factors    = rep(1, nrow(current_scf))
@@ -38,9 +39,7 @@ sim_option_1 = function(projected_scf, macro_projections, beta = 0.5) {
       age_option_1(year, macro_projections, micro_factors, aggregate_factor, beta)
     
     # Skip if before enactment
-    if (year < 2026) {
-      next
-    }
+    if (year < 2026) next
     
     # Calculate record-level taxes
     year_results = calc_tax_option_1(current_scf, year, macro_projections)
@@ -48,6 +47,12 @@ sim_option_1 = function(projected_scf, macro_projections, beta = 0.5) {
     # Calculate and store aggregate statistics
     year_totals = get_totals_option_1(year_results, year)
     totals      = bind_rows(totals, year_totals) 
+    
+    # Calculate revenue offsets
+    revenue_offset = bind_rows(
+      revenue_offset, 
+      calc_revenue_offset_option_1(year_results)
+    )
     
     # Calculate record-level adjustments to capital gains based on deemed realization
     micro_factors = current_scf %>%
@@ -61,7 +66,16 @@ sim_option_1 = function(projected_scf, macro_projections, beta = 0.5) {
     aggregate_factor = 1 - year_totals$deemed_realization / year_totals$unrealized_kg
   }
   
-  return(totals)
+  # Calculate net revenue effect and return
+  totals %>%
+    left_join(
+      revenue_offset %>%
+        group_by(year) %>%
+        summarise(revenue_offset = sum(would_be_tax)),
+      by = 'year'
+    ) %>%
+    mutate(net_revenue = borrowing_tax - replace_na(revenue_offset, 0)) %>%
+    return()
 }
 
 
@@ -85,7 +99,7 @@ calc_tax_option_1 = function(projected_scf, year, macro_projections) {
   #----------------------------------------------------------------------------
   
   # Define tax law parameters
-  exemption = 500000
+  base_exemption = 250000
   tax_rate  = 0.238
   
   # Adjust parameters for inflation
@@ -93,14 +107,16 @@ calc_tax_option_1 = function(projected_scf, year, macro_projections) {
     summarise(factor = ccpiu_irs[year == !!year] / ccpiu_irs[year == 2026]) %>%
     pull(factor)
   
-  exemption = exemption * inflation_factor
+  exemption = base_exemption * inflation_factor
   
   # Calculate tax and update basis
   projected_scf %>% 
     mutate(
       
+      year = !!year,
+      
       # Subtract annual borrowing exemption
-      borrowing_after_exemption = pmax(0, positive_taxable_borrowing - exemption),
+      borrowing_after_exemption = pmax(0, positive_taxable_borrowing - if_else(married == 1, exemption * 2, exemption)),
       
       # Calculate deemed realization (limited by borrowing and available gains)
       deemed_realization = pmax(0, borrowing_after_exemption - pmax(0, kg_pass_throughs - kg_other)),
@@ -208,6 +224,53 @@ age_option_1 = function(scf, target_year, macro_projections, micro_factors,
 
 
 
+calc_revenue_offset_option_1 = function(year_results, prob_hold_to_death = 0.8) {
+  
+  #----------------------------------------------------------------------------
+  # Calculates schedule of would-be tax payments for each record with positive
+  # borrowing tax, based on age and assumed probability of holding to death.
+  # Assumes people live to 90. For those above 90, assumes 100% of gains 
+  # would have been held til death.
+  # 
+  # Parameters:
+  #   - year_results       (df) : record-level results from calc_tax_option_1
+  #   - prob_hold_to_death (dbl): probability gains would be held until death
+  #
+  # Output: schedule of would-be tax payments by year
+  #----------------------------------------------------------------------------
+  
+  year_results %>%
+    
+    # Expand to future years among taxpayers
+    filter(borrowing_tax > 0) %>%
+    select(id, age, borrowing_tax, weight, year) %>%
+    expand_grid(years_forward = 1:75) %>%  
+    filter(age + years_forward <= 90) %>% 
+    mutate(
+      
+      # For gains not held to death, spread tax evenly over remaining years
+      years_left   = pmax(0, 90 - age),
+      would_be_tax = if_else(
+        years_left > 0, 
+        borrowing_tax * (1 - prob_hold_to_death) / years_left,
+        0 
+      )
+    ) %>%
+    
+    # Aggregate and return
+    group_by(
+      source_year = year, 
+      year        = year + years_forward
+    ) %>%
+    summarise(
+      would_be_tax = sum(would_be_tax * weight) / 1e9, 
+      .groups = 'drop'
+    ) %>% 
+    return()
+}
+
+
+
 get_totals_option_1 = function(year_results, year) {
   
   #----------------------------------------------------------------------------
@@ -236,10 +299,17 @@ get_totals_option_1 = function(year_results, year) {
       # Total deemed realization
       deemed_realization = sum(deemed_realization * weight) / 1e9,
       
-      # Tax revenue in billions
-      tax = sum(borrowing_tax * weight) / 1e9,
+      # Number of taxpayers
+      n_taxpayers     = sum((borrowing_tax > 0) * weight),
+      share_taxapyers = weighted.mean(borrowing_tax > 0, weight),
       
+      # Tax revenue in billions
+      borrowing_tax = sum(borrowing_tax * weight) / 1e9,
+
       # Share of eligible gains constructively realized
       realization_rate = deemed_realization / unrealized_kg
     )
 }
+
+
+

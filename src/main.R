@@ -14,7 +14,7 @@ library(quantregForest)
 #---------------
 
 # Random seed
-set.seed(76)
+set.seed(1)
 
 # Set data dependency file paths
 file_paths = list(
@@ -41,6 +41,7 @@ budget_window = 2026:2035
 
 source('./src/data.R')
 source('./src/estimation.R')
+source('./src/sim_option_1.R')
 
 # Read macro projections
 macro_projections = read_macro_projections()
@@ -57,17 +58,13 @@ augmented_scf = process_scf() %>%
   # Impute positive net borrowing variable based on 2009 SCF
   impute_borrowing_flows()
 
+# Run simulations
+sims = list(
+  option_1 = sim_option_1(augmented_scf, macro_projections), 
+  option_2 = -1, 
+  option_3 = -1
+)
 
-
-
-
-# 4) calculate tax liability under each reform option
-#     - option (1) is easy (cross-sectional joint function of borrowing and gains)
-#     - option (2) is tougher -- have to model probability of sale death over time....
-#     - option (3) might not be SCF-based at all -- could just do aggregate data 
-#   - all of these have to account for avoidance
-
-# 5) calculate budget totals and maybe distribution summary tables? 
 
 
 #----------------------------------
@@ -76,9 +73,5 @@ augmented_scf = process_scf() %>%
 
 source('./src/calc_etrs.R')
 
-# 1) write functions for all the formulas
 
-# 2) choose baseline and sensitivity parameter values
-
-# 3) execute functions and produce tables
 

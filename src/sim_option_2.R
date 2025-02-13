@@ -111,21 +111,20 @@ calc_tax_option_2 = function(current_scf, year, macro_projections, static) {
   current_scf %>% 
     
     # Do avoidance if non-static
-    do_avoidance_option_1(exemption, static) %>%
+    do_avoidance_option_2(year, exemption, macro_projections, static) %>%
     
     # Calculate tax
     mutate(
       year = !!year,
       
       # Subtract annual borrowing exemption
-      borrowing_after_exemption = pmax(0, positive_taxable_borrowing - 
-                                         if_else(married == 1, exemption * 2, exemption)),
+      borrowing_after_exemption = pmax(0, positive_taxable_borrowing - if_else(married == 1, exemption * 2, exemption)),
       
       # Calculate withholding tax (τ_w = 0.10)
       withholding_tax = borrowing_after_exemption * withholding_rate,
       
       # Calculate death tax adjustment
-      basis_share = 1 - if_else(assets > 0, (kg_pass_throughs + kg_other) / assets, 1)
+      basis_share = 1 - if_else(assets > 0, (kg_primary_home + kg_other_re + kg_pass_throughs + kg_other) / assets, 1)
 
     ) %>% 
     return()
@@ -133,65 +132,89 @@ calc_tax_option_2 = function(current_scf, year, macro_projections, static) {
 
 
 
-do_avoidance_option_2 = function(current_scf, exemption, static) {
+do_avoidance_option_2 = function(current_scf, year, exemption, macro_projections, static) {
   
   #----------------------------------------------------------------------------
   # Applies avoidance responses to positive taxable borrowing, including both
-  # business sheltering and intertemporal smoothing.
+  # business sheltering and intertemporal smoothing. 
+  # 
+  # Based on Leite (2024), "The Firm As Tax Shelter", 
+  # https://www.parisschoolofeconomics.eu/app/uploads/2024/11/LEITE-David-JMP-OK.pdf
   # 
   # Parameters:
-  #   - current_scf (df) : SCF+ data projected through given year
-  #   - exemption  (int) : per-person annual borrowing exemption for this year  
-  #   - static    (bool) : if true, exit (running without avoidance)
+  #   - current_scf        (df) : SCF+ data projected through given year
+  #   - year              (int) : year of tax calculation
+  #   - exemption         (dbl) : borrowing exemption threshold for this year 
+  #   - macro_projections (lst) : economic and demographic projections 
+  #                               (see read_macro_projections)
+  #   - static           (bool) : whether running without avoidance
   #
   # Output: SCF data with avoidance adjustments applied
   #----------------------------------------------------------------------------
-  
-  # Parameters
-  sheltering_rate  = 0.10  # % of borrowing that can be shifted to business
-  smoothing_factor = 1     # % of exemption that can be retimed
   
   # Return if static!
   if (static) return(current_scf)
   
   
-  current_scf %>% 
-    
-  #-------------------------------
-  # Business sheltering avoidance
-  #-------------------------------
+  # -----------
+  # Parameters
+  # -----------
   
-  mutate(
-    
-    # For pass-through owners, reduce taxable borrowing by sheltering rate
-    positive_taxable_borrowing = positive_taxable_borrowing * (1 - sheltering_rate * pass_through_owner)
-    
-  ) %>%
-    
+  # % of exemption that can be retimed
+  smoothing_factor = 1 
+  
+  # Log-linear tax price elasticity for $1 of consumption from Leite (2024)
+  # 31% of consumption shifts in response to a ~0.8pp net-of-tax price wedge
+  elasticity = 0.31 / (1 / ((1 - 0.23) * (1 - 0.28)) - 1)  
+  
+  
   #------------------------------
   # Smoothing/retiming avoidance
   #------------------------------
   
-  mutate(
+  current_scf %>% 
+    mutate(
+      
+      # Calculate share of debt that can be retimed (non-residential share)
+      share_retimable = if_else(
+        taxable_debt > 0, 
+        (credit_lines + other_debt) / taxable_debt,
+        0
+      ),
+      
+      # Calculate maximum amount that could be sheltered through retiming
+      max_retimed = if_else(married == 1, exemption * 2, exemption) * smoothing_factor,
+      
+      # Calculate potential reduction in taxable borrowing from retiming
+      potential_reduction = pmin(positive_taxable_borrowing * share_retimable, max_retimed),
+      
+      # Apply reduction to positive taxable borrowing
+      positive_taxable_borrowing = positive_taxable_borrowing - potential_reduction
+      
+    ) %>% 
     
-    # Calculate share of debt that can be retimed (non-residential share)
-    share_retimable = if_else(
-      taxable_debt > 0, 
-      (credit_lines + other_debt) / taxable_debt,
-      0
-    ),
+    #-------------------------------
+    # Business sheltering avoidance
+    #-------------------------------
     
-    # Calculate maximum amount that could be sheltered through retiming
-    max_retimed = if_else(married == 1, exemption * 2, exemption) * smoothing_factor,
-    
-    # Calculate potential reduction in taxable borrowing from retiming
-    potential_reduction = pmin(positive_taxable_borrowing * share_retimable, max_retimed),
-    
-    # Apply reduction to positive taxable borrowing
-    positive_taxable_borrowing = positive_taxable_borrowing - potential_reduction
-    
-  ) %>%
-    select(-share_retimable, -max_retimed, -potential_reduction) %>% 
+    mutate(
+      
+      # First, calculate marginal rate on a new dollar of borrowing
+      tax  = calc_tax_option_2(current_scf, year, macro_projections, T)$withholding_tax, 
+      tax1 = calc_tax_option_2(current_scf %>% mutate(positive_taxable_borrowing = positive_taxable_borrowing + 1), year, macro_projections, T)$withholding_tax,
+      mtr  = tax1 - tax, 
+      
+      # Express as tax-price wedge
+      tax_price = 1 / (1 - mtr) - 1,
+      
+      # Calculate fraction of borrowing shifted
+      percent_shifted = tax_price * elasticity,
+      
+      # For pass-through owners, reduce taxable borrowing by sheltering rate
+      positive_taxable_borrowing = positive_taxable_borrowing * (1 - percent_shifted * pass_through_owner)
+      
+    ) %>%
+    select(-share_retimable, -max_retimed, -potential_reduction, -percent_shifted) %>% 
     return()
 }
 

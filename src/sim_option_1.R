@@ -124,7 +124,7 @@ calc_tax_option_1 = function(current_scf, year, macro_projections, static) {
   current_scf %>% 
     
     # Do avoidance if non-static
-    do_avoidance_option_1(exemption, static) %>%
+    do_avoidance_option_1(year, exemption, macro_projections, static) %>%
     
     # Calculate tax
     mutate(
@@ -145,45 +145,47 @@ calc_tax_option_1 = function(current_scf, year, macro_projections, static) {
 
 
 
-do_avoidance_option_1 = function(current_scf, exemption, static) {
+do_avoidance_option_1 = function(current_scf, year, exemption, macro_projections, static) {
   
   #----------------------------------------------------------------------------
   # Applies avoidance responses to positive taxable borrowing, including both
-  # business sheltering and intertemporal smoothing.
+  # business sheltering and intertemporal smoothing. 
+  # 
+  # Based on Leite (2024), "The Firm As Tax Shelter", 
+  # https://www.parisschoolofeconomics.eu/app/uploads/2024/11/LEITE-David-JMP-OK.pdf
   # 
   # Parameters:
-  #   - current_scf (df) : SCF+ data projected through given year
-  #   - exemption  (int) : per-person annual borrowing exemption for this year  
-  #   - static    (bool) : if true, exit (running without avoidance)
+  #   - current_scf        (df) : SCF+ data projected through given year
+  #   - year              (int) : year of tax calculation
+  #   - exemption         (dbl) : borrowing exemption threshold for this year 
+  #   - macro_projections (lst) : economic and demographic projections 
+  #                               (see read_macro_projections)
+  #   - static           (bool) : whether running without avoidance
   #
   # Output: SCF data with avoidance adjustments applied
   #----------------------------------------------------------------------------
-  
-  # Parameters
-  sheltering_rate  = 0.10  # % of borrowing that can be shifted to business
-  smoothing_factor = 1     # % of exemption that can be retimed
   
   # Return if static!
   if (static) return(current_scf)
   
   
+  # -----------
+  # Parameters
+  # -----------
+  
+  # % of exemption that can be retimed
+  smoothing_factor = 1 
+  
+  # Log-linear tax price elasticity for $1 of consumption from Leite (2024)
+  # 31% of consumption shifts in response to a ~0.8pp net-of-tax price wedge
+  elasticity = 0.31 / (1 / ((1 - 0.23) * (1 - 0.28)) - 1)  
+  
+  
+  #------------------------------
+  # Smoothing/retiming avoidance
+  #------------------------------
+  
   current_scf %>% 
-    
-    #-------------------------------
-    # Business sheltering avoidance
-    #-------------------------------
-  
-    mutate(
-      
-      # For pass-through owners, reduce taxable borrowing by sheltering rate
-      positive_taxable_borrowing = positive_taxable_borrowing * (1 - sheltering_rate * pass_through_owner)
-      
-    ) %>%
-      
-    #------------------------------
-    # Smoothing/retiming avoidance
-    #------------------------------
-  
     mutate(
       
       # Calculate share of debt that can be retimed (non-residential share)
@@ -202,8 +204,30 @@ do_avoidance_option_1 = function(current_scf, exemption, static) {
       # Apply reduction to positive taxable borrowing
       positive_taxable_borrowing = positive_taxable_borrowing - potential_reduction
       
+    ) %>% 
+    
+    #-------------------------------
+    # Business sheltering avoidance
+    #-------------------------------
+  
+    mutate(
+      
+      # First, calculate marginal rate on a new dollar of borrowing
+      tax  = calc_tax_option_1(current_scf, year, macro_projections, T)$borrowing_tax, 
+      tax1 = calc_tax_option_1(current_scf %>% mutate(positive_taxable_borrowing = positive_taxable_borrowing + 1), year, macro_projections, T)$borrowing_tax,
+      mtr  = tax1 - tax, 
+      
+      # Express as tax-price wedge
+      tax_price = 1 / (1 - mtr) - 1,
+      
+      # Calculate fraction of borrowing shifted
+      percent_shifted = tax_price * elasticity,
+      
+      # For pass-through owners, reduce taxable borrowing by sheltering rate
+      positive_taxable_borrowing = positive_taxable_borrowing * (1 - percent_shifted * pass_through_owner)
+      
     ) %>%
-    select(-share_retimable, -max_retimed, -potential_reduction) %>% 
+    select(-share_retimable, -max_retimed, -potential_reduction, -percent_shifted) %>% 
     return()
 }
 

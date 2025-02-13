@@ -38,7 +38,7 @@ process_scf = function() {
     
     # Construct other variables
     mutate(
-      married            = as.integer(MARRIED == 1), 
+      married = as.integer(MARRIED == 1), 
       pass_through_owner = as.integer(BUS > 0)
     ) %>% 
     
@@ -218,9 +218,10 @@ add_forbes_data = function(augmented_scf) {
     filter(net_worth >= 500e6) %>%
     summarise(
       across(
-        .cols = c(all_of(net_worth_components), wages, income, pass_through_owner, starts_with('kg_')), 
+        .cols = c(all_of(net_worth_components), wages, income, starts_with('kg_')), 
         .fns  = ~ sum(. * weight) / sum(net_worth * weight)
-      )
+      ), 
+      pass_through_owner = weighted.mean(pass_through_owner, weight)
     )
   
   # Load the Forbes 2024 billionaires list
@@ -247,15 +248,16 @@ add_forbes_data = function(augmented_scf) {
     # missing age. Assumes all are married and has one child (non-NA values are 
     # required for imputation models but have ~zero bearing on results).
     mutate(
-      weight   = 1,
-      age      = pmin(100, if_else(is.na(age), round(mean(age, na.rm = T)), age)),  
-      married  = 1, 
-      n_kids   = 1,
-      id       = 1000000 + row_number()
+      weight  = 1,
+      age     = pmin(100, if_else(is.na(age), round(mean(age, na.rm = T)), age)),  
+      married = 1, 
+      n_kids  = 1,
+      id      = 1000000 + row_number(),
     ) %>% 
     select(
       id, weight, name = full_name, age, married, n_kids,
-      all_of(net_worth_components), wages, income, starts_with('kg'), pass_through_owner
+      all_of(net_worth_components), wages, income, starts_with('kg'), 
+      pass_through_owner
     )
   
   # Remove billionaires from SCF, add forbes, and return
@@ -345,8 +347,8 @@ process_scf_panel = function() {
     # Harmonize variable names and concepts with those of augmented SCF above
     mutate(
       assets            = ASSET,
-      primary_mortgage  = MRTHEL, 
-      other_mortgage    = RESDBT, 
+      primary_mortgage  = MRTHEL,
+      other_mortgage    = RESDBT,
       credit_lines      = OTHLOC,
       credit_cards      = CCBAL,
       student_loans     = EDNINST,

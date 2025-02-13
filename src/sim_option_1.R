@@ -132,9 +132,12 @@ calc_tax_option_1 = function(current_scf, year, macro_projections, static) {
       
       # Subtract annual borrowing exemption
       borrowing_after_exemption = pmax(0, positive_taxable_borrowing - if_else(married == 1, exemption * 2, exemption)),
+    
+      # Calculate basis share for use in imputing deemed realization
+      basis_share = pmin(1, pmax(0, 1 - if_else(assets > 0, (kg_primary_home + kg_other_re + kg_pass_throughs + kg_other) / assets, 1))),
       
-      # Calculate deemed realization (limited by borrowing and available gains)
-      deemed_realization = pmax(0, borrowing_after_exemption - pmax(0, kg_pass_throughs - kg_other)),
+      # Calculate deemed realization
+      deemed_realization = borrowing_after_exemption * (1 - basis_share),
       
       # Calculate tax on deemed realization
       borrowing_tax = deemed_realization * tax_rate
@@ -301,17 +304,16 @@ age_option_1 = function(current_scf, target_year, macro_projections, micro_facto
       # Update weights for population growth
       weight = weight * demographic_factor,
       
-      # Update unrealized gains with combined micro/aggregate adjustment,
-      # for gains that are actually realizable against the tax
+      # Update unrealized gains with combined micro/aggregate adjustment
       across(
-        .cols = c(kg_pass_throughs, kg_other),
+        .cols = starts_with('kg_'),
         .fns = ~ . * kg_adjustment_factor * economic_factor
       ),
       
       # Update all other monetary variables with economic growth
       across(
         .cols = c(
-          income, wages, kg_pass_throughs, kg_other, assets, 
+          income, wages, starts_with('kg_'), assets, 
           primary_mortgage, other_mortgage, credit_lines, 
           credit_cards, student_loans, auto_loans, 
           other_installment, other_debt, taxable_debt,

@@ -120,11 +120,11 @@ calc_tax_option_2 = function(current_scf, year, macro_projections, static) {
       # Subtract annual borrowing exemption
       borrowing_after_exemption = pmax(0, positive_taxable_borrowing - if_else(married == 1, exemption * 2, exemption)),
       
-      # Calculate withholding tax (τ_w = 0.10)
+      # Calculate withholding tax
       withholding_tax = borrowing_after_exemption * withholding_rate,
       
-      # Calculate death tax adjustment
-      basis_share = 1 - if_else(assets > 0, (kg_primary_home + kg_other_re + kg_pass_throughs + kg_other) / assets, 1)
+      # Calculate basis share for use in imputing gains tax later in life
+      basis_share = pmin(1, pmax(0, 1 - if_else(assets > 0, (kg_primary_home + kg_other_re + kg_pass_throughs + kg_other) / assets, 1)))
 
     ) %>% 
     return()
@@ -278,7 +278,7 @@ age_option_2 = function(current_scf, target_year, macro_projections) {
       # Update all monetary variables with economic growth
       across(
         .cols = c(
-          income, wages, kg_pass_throughs, kg_other, assets, 
+          income, wages, starts_with('kg_'), assets, 
           primary_mortgage, other_mortgage, credit_lines, 
           credit_cards, student_loans, auto_loans, 
           other_installment, other_debt, taxable_debt,

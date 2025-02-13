@@ -6,16 +6,18 @@
 #------------------------------------------------------------------------------
 
 
-sim_option_2 = function(augmented_scf, macro_projections) {
+sim_option_2 = function(augmented_scf, macro_projections, static_totals = NULL) {
   
   #----------------------------------------------------------------------------
-  # Projects 10-year revenue under option 2, tracking withholding tax payments
-  # and calculating credits against future tax liability.
+  # Projects revenue under option 2. With default inputs, runs twice 
+  # recursively -- static and non-static (with avoidance) modes. 
   # 
   # Parameters:
-  #   - augmented_scf      (df)  : SCF+ data projected through 2024
-  #   - macro_projections  (lst) : economic and demographic projections
-  #                                (see read_macro_projections)
+  #   - augmented_scf     (df)  : SCF+ data projected through 2024
+  #   - macro_projections (lst) : economic and demographic projections
+  #                               (see read_macro_projections)
+  #   - static_totals     (df)  : results of this function, passed to recursive
+  #                               call to simulate with avoidance
   #
   # Output: dataframe of aggregate output from simulation.
   #----------------------------------------------------------------------------
@@ -36,7 +38,7 @@ sim_option_2 = function(augmented_scf, macro_projections) {
     if (year < 2026) next
     
     # Calculate record-level taxes and credits
-    year_results = calc_tax_option_2(current_scf, year, macro_projections)
+    year_results = calc_tax_option_2(current_scf, year, macro_projections, is.null(static_totals))
     
     # Calculate and store aggregate statistics
     year_totals = get_totals_option_2(year_results, year)
@@ -50,7 +52,7 @@ sim_option_2 = function(augmented_scf, macro_projections) {
   }
   
   # Calculate net revenue effect and return
-  totals %>%
+  totals = totals %>%
     left_join(
       revenue_offset %>%
         group_by(year) %>%
@@ -64,12 +66,21 @@ sim_option_2 = function(augmented_scf, macro_projections) {
       by = 'year'
     ) %>%
     mutate(net_revenue = withholding_tax + replace_na(revenue_offset, 0)) %>%
-    return()
+    mutate(static = is.null(static_totals), .before = everything())
+  
+  # Recurse
+  if (is.null(static_totals)) {
+    sim_option_2(augmented_scf, macro_projections, totals)
+  } else {
+    static_totals %>% 
+      bind_rows(totals) %>% 
+      return()
+  }
 }
 
 
 
-calc_tax_option_2 = function(projected_scf, year, macro_projections) {
+calc_tax_option_2 = function(current_scf, year, macro_projections, static) {
   
   #----------------------------------------------------------------------------
   # Calculates withholding tax liability under option 2. Applies withholding tax
@@ -77,9 +88,10 @@ calc_tax_option_2 = function(projected_scf, year, macro_projections) {
   # separately and applied against future capital gains tax liability.
   # 
   # Parameters:
-  #   - projected_scf      (df) : SCF+ data projected through given year
-  #   - year              (int) : year of tax calculation
-  #   - macro_projections (lst) : economic and demographic projections 
+  #   - current_scf       (df)   : SCF+ data projected through given year
+  #   - year              (int)  : year of tax calculation
+  #   - macro_projections (lst)  : economic and demographic projections 
+  #   - static            (bool) : whether running without avoidance
   #
   # Output: processed SCF with tax calculations
   #----------------------------------------------------------------------------
@@ -95,8 +107,13 @@ calc_tax_option_2 = function(projected_scf, year, macro_projections) {
   
   exemption = base_exemption * inflation_factor
   
-  # Calculate withholding tax and death tax adjustment
-  projected_scf %>% 
+  # Start with SCF... 
+  current_scf %>% 
+    
+    # Do avoidance if non-static
+    do_avoidance_option_1(exemption, static) %>%
+    
+    # Calculate tax
     mutate(
       year = !!year,
       
@@ -116,7 +133,65 @@ calc_tax_option_2 = function(projected_scf, year, macro_projections) {
 
 
 
-age_option_2 = function(scf, target_year, macro_projections) {
+do_avoidance_option_2 = function(current_scf, exemption, static) {
+  
+  #----------------------------------------------------------------------------
+  # TODO
+  # 
+  # Parameters:
+  #   - current_scf (df) : SCF+ data projected through given year
+  #   - exemption  (int) : per-person annual borrowing exemption for this year  
+  #   - static    (bool) : if true, exit (running without avoidance)
+  #
+  # Output: TODO
+  #----------------------------------------------------------------------------
+  
+  # Parameter: smoothing factor (% of exemption value that can be retimed
+  # by smoothing out borrowing across years)
+  smoothing_factor = 1
+  
+  # Return if static!
+  if (static) return(current_scf)
+  
+  current_scf %>% 
+    
+    #------------------------------
+    # Smoothing/retiming avoidance
+    #------------------------------
+    
+    mutate(
+      
+      # Calculate share of debt that can be retimed (non-residential share)
+      share_retimable = if_else(
+        taxable_debt > 0, 
+        (credit_lines + other_debt) / taxable_debt,
+        0
+      ),
+      
+      # Calculate maximum amount that could be sheltered through retiming
+      max_retimed = if_else(married == 1, exemption * 2, exemption) * smoothing_factor,
+      
+      # Calculate potential reduction in taxable borrowing: lesser of maximum 
+      potential_reduction = pmin(positive_taxable_borrowing * share_retimable, max_retimed),
+      
+      # Apply reduction to positive taxable borrowing
+      positive_taxable_borrowing = positive_taxable_borrowing - potential_reduction
+      
+    ) %>%
+    select(-share_retimable, -max_retimed, -potential_reduction) %>% 
+    
+    #-------------------------------
+    # Business sheltering avoidance
+    #-------------------------------
+    
+    # TODO
+    
+    return()
+}
+
+
+
+age_option_2 = function(current_scf, target_year, macro_projections) {
   
   #----------------------------------------------------------------------------
   # Ages SCF data forward one year for option 2 simulation. Similar to option 1
@@ -163,7 +238,7 @@ age_option_2 = function(scf, target_year, macro_projections) {
     mutate(economic_factor = target_year / base_year) %>% 
     pull(economic_factor)
   
-  scf %>%
+  current_scf %>%
     # Join demographic factors
     left_join(demographic_factors, by = c('married', 'age')) %>%
     

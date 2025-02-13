@@ -77,6 +77,13 @@ sims = list(
   option_3 = -1
 )
 
+sims[1:2] %>% 
+  map(
+    .f = ~ .x %>% 
+      filter(year <= 2035) %>% 
+      group_by(static) %>% 
+      summarise(sum(net_revenue))
+  )
 
 
 #----------------------------------

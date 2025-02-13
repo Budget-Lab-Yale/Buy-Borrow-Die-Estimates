@@ -84,7 +84,7 @@ estimate_borrowing_model = function() {
       norm_postive_borrowing = pmax(0, chg_taxable_debt) / weighted.mean(taxable_debt, weight)
     )
     
-  # Estimate model parameters for those with taxable debt in t = 0
+  # Estimate model parameters 
   qrf = quantregForest(
     x        = train[c('age', 'has_kids', 'married', 'has_wages',
                        'pctile_income', 'pctile_assets', 'pctile_taxable_debt', 'pctile_net_worth')],

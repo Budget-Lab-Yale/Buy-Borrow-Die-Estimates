@@ -463,3 +463,27 @@ impute_borrowing_flows = function(augmented_scf) {
     return()
 }
 
+
+
+impute_expected_death_age = function(augmented_scf) {
+  
+  #----------------------------------------------------------------------------
+  # Imputes expected death age using 2021 SSA life expectancy tables.
+  # 
+  # Parameters:
+  #   - augmented_scf (df)  : SCF + Forbes data projected through 2024
+  #
+  # Output: input data with new variable for expected death age. 
+  #----------------------------------------------------------------------------
+  
+  # Read SSA life expectancy data 
+  ssa = read_csv('./resources/ssa/life_expectancy_2021.csv', show_col_types = F)
+  
+  # Add to SCF data and return
+  augmented_scf %>% 
+    left_join(ssa, by = 'age') %>% 
+    relocate(age_expected_death, .after = age) %>% 
+    mutate(age_expected_death = as.integer(round(age_expected_death))) %>% 
+    return()
+}
+

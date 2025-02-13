@@ -21,9 +21,9 @@ sim_option_2 = function(augmented_scf, macro_projections) {
   #----------------------------------------------------------------------------
   
   # Initialize tracking objects
-  totals = tibble()
+  totals         = tibble()
   revenue_offset = tibble()
-  current_scf = augmented_scf
+  current_scf    = augmented_scf
   
   # For each projection year
   for (year in 2025:max(budget_window)) {
@@ -208,11 +208,11 @@ calc_revenue_offset_option_2 = function(year_results, prob_hold_to_death = 0.8) 
     
     # Select taxpayers
     filter(withholding_tax > 0) %>%
-    select(id, year, age, withholding_tax, basis_share, borrowing_after_exemption, weight) %>%
+    select(id, year, age, age_expected_death, withholding_tax, basis_share, borrowing_after_exemption, weight) %>%
     expand_grid(years_forward = 1:75) %>%  
-    filter(age + years_forward <= 90) %>% 
+    filter(age + years_forward <= age_expected_death) %>% 
     mutate(
-      years_left = pmax(0, 90 - age),
+      years_left = age_expected_death - age,
       
       # Calculate total tax adjustment on this year's borrowing
       tax_adjustment = borrowing_after_exemption * (1 - basis_share) * 0.238 - withholding_tax,
@@ -225,9 +225,8 @@ calc_revenue_offset_option_2 = function(year_results, prob_hold_to_death = 0.8) 
       ),
       
       # Add death portion in death year
-      death_year = year + years_left,
       revenue_offset_death = if_else(
-        year + years_forward == death_year,
+        year + years_forward == age_expected_death,
         tax_adjustment * prob_hold_to_death,
         0
       ),

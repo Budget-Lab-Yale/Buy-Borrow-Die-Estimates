@@ -23,9 +23,9 @@ sim_option_1 = function(augmented_scf, macro_projections, beta = 0.5) {
   #----------------------------------------------------------------------------
   
   # Initialize tracking objects
-  totals = tibble()
+  totals         = tibble()
   revenue_offset = tibble()
-  current_scf = augmented_scf
+  current_scf    = augmented_scf
   
   # Initialize unrealized gain adjustment factors to 1 (pre-enactment) 
   micro_factors    = rep(1, nrow(current_scf))
@@ -229,8 +229,6 @@ calc_revenue_offset_option_1 = function(year_results, prob_hold_to_death = 0.8) 
   #----------------------------------------------------------------------------
   # Calculates schedule of would-be tax payments for each record with positive
   # borrowing tax, based on age and assumed probability of holding to death.
-  # Assumes people live to 90. For those above 90, assumes 100% of gains 
-  # would have been held til death.
   # 
   # Parameters:
   #   - year_results       (df) : record-level results from calc_tax_option_1
@@ -243,13 +241,13 @@ calc_revenue_offset_option_1 = function(year_results, prob_hold_to_death = 0.8) 
     
     # Expand to future years among taxpayers
     filter(borrowing_tax > 0) %>%
-    select(id, age, borrowing_tax, weight, year) %>%
+    select(id, age, age_expected_death, borrowing_tax, weight, year) %>%
     expand_grid(years_forward = 1:75) %>%  
-    filter(age + years_forward <= 90) %>% 
+    filter(age + years_forward <= age_expected_death) %>% 
     mutate(
       
       # For gains not held to death, spread tax evenly over remaining years
-      years_left   = pmax(0, 90 - age),
+      years_left = age_expected_death - age,
       would_be_tax = if_else(
         years_left > 0, 
         borrowing_tax * (1 - prob_hold_to_death) / years_left,

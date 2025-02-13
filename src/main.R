@@ -56,12 +56,15 @@ augmented_scf = process_scf() %>%
   add_forbes_data() %>%
   
   # Impute positive net borrowing variable based on 2009 SCF
-  impute_borrowing_flows()
+  impute_borrowing_flows() %>% 
+  
+  # Impute life expectancy
+  impute_
 
 # Run simulations
 sims = list(
   option_1 = sim_option_1(augmented_scf, macro_projections), 
-  option_2 = -1, 
+  option_2 = sim_option_2(augmented_scf, macro_projections), 
   option_3 = -1
 )
 

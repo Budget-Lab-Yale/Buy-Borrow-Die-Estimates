@@ -27,12 +27,17 @@ file_paths = list(
   macro_projections = '/gpfs/gibbs/project/sarin/shared/model_data/Macro-Projections/v3/2024111415/baseline',
   
   # Root for output files 
-  output_root = './output'
+  output_root = './output', 
+  
+  # Root for cached borrowing imputation values 
+  cache_root = './cache'
 )
 
+# Whether to load cached borrowing imputation values or re-estimate
+load_chached_imputation = T
 
-# Ten-year budget window 
-budget_window = 2026:2035
+# Years for simulation 
+years = 2026:2055
 
 
 #-----------------------------
@@ -42,9 +47,12 @@ budget_window = 2026:2035
 source('./src/data.R')
 source('./src/estimation.R')
 source('./src/sim_option_1.R')
+source('./src/sim_option_2.R')
+
 
 # Read macro projections
 macro_projections = read_macro_projections()
+
 
 # Process 2022 SCF 
 augmented_scf = process_scf() %>% 
@@ -56,10 +64,11 @@ augmented_scf = process_scf() %>%
   add_forbes_data() %>%
   
   # Impute positive net borrowing variable based on 2009 SCF
-  impute_borrowing_flows() %>% 
+  impute_borrowing_flows(load_chached_imputation) %>% 
   
   # Impute life expectancy
-  impute_
+  impute_expected_death_age()
+
 
 # Run simulations
 sims = list(

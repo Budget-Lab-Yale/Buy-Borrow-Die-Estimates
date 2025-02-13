@@ -32,7 +32,7 @@ sim_option_1 = function(augmented_scf, macro_projections, beta = 0.5) {
   aggregate_factor = 1 
   
   # For each projection year
-  for (year in 2025:max(budget_window)) {
+  for (year in 2025:max(years)) {
     
     # Age data forward to this year
     current_scf = current_scf %>% 

@@ -398,18 +398,33 @@ process_scf_panel = function() {
 
   
 
-impute_borrowing_flows = function(augmented_scf) {
+impute_borrowing_flows = function(augmented_scf, use_cache = TRUE) {
   
   #----------------------------------------------------------------------------
-  # Imputes net new borrowing for all records in the current SCF given a model
-  # estimated on the 2009 SCF panel.
+  # Imputes net new borrowing for all records in the current SCF, with option
+  # to read/write results from CSV cache
   # 
   # Parameters:
-  #   - augmented_scf (df)  : SCF + Forbes data projected through 2024
+  #   - augmented_scf (df) : SCF + Forbes data projected through 2024
+  #   - use_cache (bool)   : whether to try reading from cache first
+  #   - cache_path (str)   : path to cache CSV file
   #
-  # Output: processed 2009 SCF panel (df).
+  # Output: Augmented SCF with imputed borrowing flows.
   #----------------------------------------------------------------------------
-
+  
+  # Try reading from cache if requested
+  cache_path = file.path(file_paths$cache_root, 'borrowing_imputations.csv')
+  if (use_cache && file.exists(cache_path)) {
+    message('Reading cached borrowing imputations')
+    return(
+      augmented_scf %>%
+        mutate(taxable_debt = credit_lines + other_debt + other_mortgage) %>%
+        left_join(read_csv(cache_path, show_col_types = FALSE), by = 'id')
+    )
+  }
+  
+  message('Computing new borrowing imputations')
+  
   # Estimate model of positive new borrowing based on SCF panel from 2007-2009
   model = estimate_borrowing_model()
   
@@ -419,11 +434,11 @@ impute_borrowing_flows = function(augmented_scf) {
       has_wages    = as.integer(wages > 0),
       has_kids     = n_kids > 0, 
       taxable_debt = credit_lines + other_debt + other_mortgage,
-      taxable_debt = taxable_debt + if_else(taxable_debt != 0, runif(nrow(.)), 0), # Add noise to create unique percentile cutoffs 
-      income       = income + if_else(income != 0, runif(nrow(.)), 0), # Add noise to create unique percentile cutoffs 
+      taxable_debt = taxable_debt + if_else(taxable_debt != 0, runif(nrow(.)), 0),
+      income       = income + if_else(income != 0, runif(nrow(.)), 0),
       net_worth    = assets - primary_mortgage - other_mortgage - 
-                     credit_lines - credit_cards - student_loans - 
-                     auto_loans - other_installment - other_debt,
+        credit_lines - credit_cards - student_loans - 
+        auto_loans - other_installment - other_debt,
       across(
         .cols = c(income, assets, taxable_debt, net_worth), 
         .fns  = ~ cut(
@@ -434,7 +449,7 @@ impute_borrowing_flows = function(augmented_scf) {
         .names = 'pctile_{col}'
       )
     )
-    
+  
   # Fit values
   imputations = imputation_data %>%
     select(
@@ -442,7 +457,6 @@ impute_borrowing_flows = function(augmented_scf) {
       pctile_income, pctile_assets, pctile_taxable_debt, pctile_net_worth
     ) %>% 
     mutate(
-      
       # Fit values 
       yhat = predict(
         object  = model,
@@ -452,14 +466,20 @@ impute_borrowing_flows = function(augmented_scf) {
       
       # Scale to population mean of taxable debt
       positive_taxable_borrowing = weighted.mean(taxable_debt, weight) * yhat
-      
     ) %>% 
     select(id, positive_taxable_borrowing)
-
+  
+  # Save to cache
+  if (!dir.exists(dirname(cache_path))) {
+    dir.create(dirname(cache_path, recursive = TRUE))
+  }
+  write_csv(imputations, cache_path)
+  message('Saved borrowing imputations to ', cache_path)
+  
   # Add to data and return 
   augmented_scf %>%
     mutate(taxable_debt = credit_lines + other_debt + other_mortgage) %>% 
-    left_join(imputations, by = 'id') %>% 
+    left_join(imputations, by = "id") %>% 
     return()
 }
 

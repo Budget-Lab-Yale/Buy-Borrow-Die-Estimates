@@ -38,7 +38,8 @@ process_scf = function() {
     
     # Construct other variables
     mutate(
-      married = as.integer(MARRIED == 1), 
+      married            = as.integer(MARRIED == 1), 
+      pass_through_owner = as.integer(BUS > 0)
     ) %>% 
     
     # Subset to required variables
@@ -62,6 +63,7 @@ process_scf = function() {
       kg_other         = KGSTMF, 
       
       # Net worth
+      pass_through_owner,
       assets = ASSET, 
       primary_mortgage, other_mortgage, credit_lines, credit_cards, student_loans, auto_loans, other_installment, other_debt
       
@@ -216,7 +218,7 @@ add_forbes_data = function(augmented_scf) {
     filter(net_worth >= 500e6) %>%
     summarise(
       across(
-        .cols = c(all_of(net_worth_components), wages, income, starts_with('kg_')), 
+        .cols = c(all_of(net_worth_components), wages, income, pass_through_owner, starts_with('kg_')), 
         .fns  = ~ sum(. * weight) / sum(net_worth * weight)
       )
     )
@@ -236,7 +238,8 @@ add_forbes_data = function(augmented_scf) {
       across(
         .cols = all_of(net_worth_components),
         .fns  = ~ . * net_worth
-      )
+      ),
+      pass_through_owner = as.integer(runif(nrow(.)) < pass_through_owner)
     ) %>% 
     
     # Add other variables and remove extraneous Forbes info. Caps age at 100 to
@@ -252,7 +255,7 @@ add_forbes_data = function(augmented_scf) {
     ) %>% 
     select(
       id, weight, name = full_name, age, married, n_kids,
-      all_of(net_worth_components), wages, income, starts_with('kg')
+      all_of(net_worth_components), wages, income, starts_with('kg'), pass_through_owner
     )
   
   # Remove billionaires from SCF, add forbes, and return
@@ -437,8 +440,8 @@ impute_borrowing_flows = function(augmented_scf, use_cache = TRUE) {
       taxable_debt = taxable_debt + if_else(taxable_debt != 0, runif(nrow(.)), 0),
       income       = income + if_else(income != 0, runif(nrow(.)), 0),
       net_worth    = assets - primary_mortgage - other_mortgage - 
-        credit_lines - credit_cards - student_loans - 
-        auto_loans - other_installment - other_debt,
+                     credit_lines - credit_cards - student_loans - 
+                     auto_loans - other_installment - other_debt,
       across(
         .cols = c(income, assets, taxable_debt, net_worth), 
         .fns  = ~ cut(

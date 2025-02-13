@@ -148,25 +148,38 @@ calc_tax_option_1 = function(current_scf, year, macro_projections, static) {
 do_avoidance_option_1 = function(current_scf, exemption, static) {
   
   #----------------------------------------------------------------------------
-  # TODO
+  # Applies avoidance responses to positive taxable borrowing, including both
+  # business sheltering and intertemporal smoothing.
   # 
   # Parameters:
   #   - current_scf (df) : SCF+ data projected through given year
   #   - exemption  (int) : per-person annual borrowing exemption for this year  
   #   - static    (bool) : if true, exit (running without avoidance)
   #
-  # Output: TODO
+  # Output: SCF data with avoidance adjustments applied
   #----------------------------------------------------------------------------
   
-  # Parameter: smoothing factor (% of exemption value that can be retimed
-  # by smoothing out borrowing across years)
-  smoothing_factor = 1
+  # Parameters
+  sheltering_rate  = 0.10  # % of borrowing that can be shifted to business
+  smoothing_factor = 1     # % of exemption that can be retimed
   
   # Return if static!
   if (static) return(current_scf)
   
+  
   current_scf %>% 
     
+    #-------------------------------
+    # Business sheltering avoidance
+    #-------------------------------
+  
+    mutate(
+      
+      # For pass-through owners, reduce taxable borrowing by sheltering rate
+      positive_taxable_borrowing = positive_taxable_borrowing * (1 - sheltering_rate * pass_through_owner)
+      
+    ) %>%
+      
     #------------------------------
     # Smoothing/retiming avoidance
     #------------------------------
@@ -183,7 +196,7 @@ do_avoidance_option_1 = function(current_scf, exemption, static) {
       # Calculate maximum amount that could be sheltered through retiming
       max_retimed = if_else(married == 1, exemption * 2, exemption) * smoothing_factor,
       
-      # Calculate potential reduction in taxable borrowing: lesser of maximum 
+      # Calculate potential reduction in taxable borrowing from retiming
       potential_reduction = pmin(positive_taxable_borrowing * share_retimable, max_retimed),
       
       # Apply reduction to positive taxable borrowing
@@ -191,13 +204,6 @@ do_avoidance_option_1 = function(current_scf, exemption, static) {
       
     ) %>%
     select(-share_retimable, -max_retimed, -potential_reduction) %>% 
-    
-    #-------------------------------
-    # Business sheltering avoidance
-    #-------------------------------
-    
-    # TODO
-  
     return()
 }
 

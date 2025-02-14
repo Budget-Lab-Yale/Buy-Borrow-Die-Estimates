@@ -73,7 +73,7 @@ augmented_scf = process_scf() %>%
 # Calculate tax rate differentials
 #----------------------------------
 
-source('./src/calc_etrs.R')
+source('./src/etrs.R')
 
 # 1) write functions for all the formulas
 

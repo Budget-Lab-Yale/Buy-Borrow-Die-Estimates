@@ -49,14 +49,14 @@ calc_etr = function(df) {
       # Calculate taxes due at time of consumption
       T_B = B * (1 - b) * tau_B,
       T_W = B * tau_W,
-      T_S = 0,
+      T_S = S * (1 - b) * tau_S,
       
       # Calculate assets and liabilities at death
       A = (1 - S) * exp((r + pi) * n),
       L = B * exp((i + pi + tau_e) * n),
       
       # Calculate taxes at death
-      T_D = B * (1 - b) * tau_D - T_B - T_W,
+      T_D = B * (1 - b) * tau_D - T_W,
       
       # Calculate value and present value  
       V    = A - L - T_D, 
@@ -115,24 +115,157 @@ calc_delta_etr = function(df) {
 }
 
 
+calc_comparative_advantage = function(config) {
+  
+  b  = as.numeric(config$b)
+  n  = as.numeric(config$n)
+  r  = as.numeric(config$r)
+  i  = as.numeric(config$i)
+  pi = as.numeric(config$pi)
+  
+  baseline = tibble(
+    id = "baseline",
+    C = 0.5,
+    b = b,
+    tau_B = 0,
+    tau_W = 0,
+    tau_S = 0.238,
+    tau_D = 0,
+    tau_e = 0,
+    n = n,
+    r = r,
+    i  = i,
+    pi = pi
+  )
+  
+  option_1 = tibble(
+    id = "Option 1",
+    C = 0.5,
+    b = b,
+    tau_B = 0.238,
+    tau_W = 0,
+    tau_S = 0.238,
+    tau_D = 0,
+    tau_e = 0,
+    n = n,
+    r = r,
+    i  = i,
+    pi = pi
+  )
+  
+  option_2 = tibble(
+    id = "Option 2",
+    C = 0.5,
+    b = b,
+    tau_B = 0,
+    tau_W = 0.1,
+    tau_S = 0.238,
+    tau_D = 0.2,
+    tau_e = 0,
+    n = n,
+    r = r,
+    i  = i,
+    pi = pi
+  )
+  
+  option_3 = tibble(
+    id = "Option 3",
+    C = 0.5,
+    b = b,
+    tau_B = 0,
+    tau_W = 0,
+    tau_S = 0.238,
+    tau_D = 0,
+    tau_e = 0.01,
+    n = n,
+    r = r,
+    i  = i,
+    pi = pi
+  )
+  
+  scenarios = bind_rows(baseline, option_1, option_2, option_3)
+  
+  1:4 %>%
+    map(., 
+        .f = ~ calc_delta_etr(scenarios[.x,]) %>%
+               select(
+                 id, etr.borrow, etr.sell, borrowing_advatage,
+                 b, n, r, i, pi
+               )
+        ) %>%
+    bind_rows() %>%
+    return()
+    
+  
+}
 
 
-#tibble(
-#   C = 0.5,
-#   b_share = 0,
-#   b = 0.5,
-#   tau_B = 0,
-#   tau_W = 0,
-#   tau_S = 0.238,
-#   tau_D = 0,
-#   tau_e = 0,
-#   n = 10,
-#   r = 0.07,
-#   i  = 0.03,
-#   pi = 0.02
-# ) %>%
-#   calc_delta_etr() %>% 
-#   pivot_longer(everything()) %>% 
-#   print(n = 50)
-# 
+1:6 %>%
+  map(., .f = ~ calc_comparative_advantage(configs[.x,]) %>%
+        mutate(
+          macro = configs[.x, "config"]
+        )
+      ) %>%
+  bind_rows() %>%
+  select(macro, !macro) %>%
+  arrange(borrowing_advatage) %>%
+  print(n=30)
 
+calc_comparative_advantage(.5, 1, .07, .04, .02)
+
+
+base = c(
+  config = "Baseline",
+  b = .5,
+  n = 10,
+  r = .07,
+  i = .04,
+  pi = .02
+)
+
+basis = c(
+  config = "Higher Basis",
+  b = .75,
+  n = 10,
+  r = .07,
+  i = .04,
+  pi = .02
+)
+
+lower_return = c(
+  config = "Lower Return",
+  b = .5,
+  n = 10,
+  r = .02,
+  i = .04,
+  pi = .02
+)
+
+equal = c(
+  config = "Equal RoR and Interest",
+  b = .5,
+  n = 10,
+  r = .05,
+  i = .05,
+  pi = .02
+)
+
+inflation = c(
+  config = "High Inflation",
+  b = .5,
+  n = 10,
+  r = .07,
+  i = .04,
+  pi = .05
+)
+
+death = c(
+  config = "Short Horizon",
+  b = .5,
+  n = 2,
+  r = .07,
+  i = .04,
+  pi = .02
+)
+
+configs = bind_rows(base, basis, lower_return, equal, inflation, death)

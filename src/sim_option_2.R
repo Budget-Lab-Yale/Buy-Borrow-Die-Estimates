@@ -40,6 +40,9 @@ sim_option_2 = function(augmented_scf, macro_projections, static_totals = NULL) 
     # Calculate record-level taxes and credits
     year_results = calc_tax_option_2(current_scf, year, macro_projections, is.null(static_totals))
     
+    # Calculate and write distribution tables for first year of policy
+    if (year == 2026) get_distribution_option_2(year_results)
+    
     # Calculate and store aggregate statistics
     year_totals = get_totals_option_2(year_results, year)
     totals = bind_rows(totals, year_totals)
@@ -322,14 +325,14 @@ calc_revenue_offset_option_2 = function(year_results, prob_hold_to_death = 0.8) 
       tax_adjustment = borrowing_after_exemption * (1 - basis_share) * 0.238 - withholding_tax,
       
       # Spread non-death portion evenly over years
-      revenue_offset_life = if_else(
+      revenue_offset_life = -if_else(
         years_left > 0,
         tax_adjustment * (1 - prob_hold_to_death) / years_left,
         0
       ),
       
       # Add death portion in death year
-      revenue_offset_death = if_else(
+      revenue_offset_death = -if_else(
         year + years_forward == age_expected_death,
         tax_adjustment * prob_hold_to_death,
         0
@@ -390,4 +393,197 @@ get_totals_option_2 = function(year_results, year) {
       withholding_tax = sum(withholding_tax * weight) / 1e9
     )
 }
+
+
+
+get_distributional_option_1 = function(year_results) {
+  
+  #----------------------------------------------------------------------------
+  # Calculates and writes distributional impact of option 1 (deemed realization) 
+  # by income percentile, age group, and wealth percentile.
+  # 
+  # Parameters:
+  # - year_results (df) : results from calc_tax_option_1
+  #
+  # Returns: list of three data frames containing distributional analysis
+  #----------------------------------------------------------------------------
+  
+  # Define age groups
+  age_groups = list(
+    'Under 35' = c(0, 34),
+    '35-44'    = c(35, 44),
+    '45-54'    = c(45, 54),
+    '55-64'    = c(55, 64),
+    '65+'      = c(65, 100)
+  )
+  
+  # Function to calculate percentile groups
+  get_percentile_group = function(x, weights, breaks) {
+    qtiles = wtd.quantile(x, weights, probs = breaks / 100)
+    cut(x, 
+        breaks = c(-Inf, qtiles, Inf),
+        labels = c(0, breaks)
+    )
+  }
+  
+  # Function to calculate metrics for each group
+  calc_group_metrics = function(df, group) {
+    df %>%
+      group_by(!!sym(group)) %>%
+      summarise(
+        n_taxpayers          = sum((borrowing_tax > 0) * weight),
+        share_taxpayers      = weighted.mean(borrowing_tax > 0, weight),
+        avg_tax             = weighted.mean(borrowing_tax, weight),
+        avg_tax_if_positive = weighted.mean(borrowing_tax, weight * (borrowing_tax > 0)),
+        pct_chg_income      = weighted.mean(-borrowing_tax / income, income * weight),
+        .groups = 'drop'
+      )
+  }
+  
+  # Assign groups
+  year_results = year_results %>%
+    mutate(
+      person_weight = weight * (1 + married),
+      income_group  = get_percentile_group(income, person_weight, c(20, 40, 60, 80, 90, 95, 99, 99.9)),
+      wealth_group  = get_percentile_group(net_worth, weight, c(20, 40, 60, 80, 90, 95, 99, 99.9)),
+      age_group     = cut(age,
+                          breaks = c(0, 34, 44, 54, 64, 100),
+                          labels = names(age_groups),
+                          include.lowest = TRUE)
+    )
+  
+  # Calculate distributions
+  distributions = list(
+    by_income = calc_group_metrics(year_results, 'income_group'),
+    by_wealth = calc_group_metrics(year_results, 'wealth_group'),
+    by_age    = calc_group_metrics(year_results, 'age_group')
+  )
+  
+  # Create output directory if it doesn't exist
+  dir.create(file.path(file_paths$output_root, "option_1"), recursive = TRUE, showWarnings = FALSE)
+  
+  # Write each distribution table to a separate CSV
+  for (name in names(distributions)) {
+    distributions[[name]] %>%
+      write_csv(
+        file.path(file_paths$output_root,
+                  "option_1",
+                  paste0("distribution_", name, "_", year_results$year[1], ".csv"))
+      )
+  }
+  
+  return(distributions)
+}
+
+
+
+get_distribution_option_2 = function(year_results, prob_hold_to_death = 0.8) {
+  
+  #----------------------------------------------------------------------------
+  # Calculates and writes distributional impact of option 2 (withholding 
+  # tax) by income percentile, age group, and wealth percentile. Incorporates
+  # present value of future tax adjustments.
+  # 
+  # Parameters:
+  # - year_results       (df)  : microdata results from calc_tax_option_2
+  # - prob_hold_to_death (dbl) : probability of holding assets until death
+  #
+  # Returns: void.
+  #----------------------------------------------------------------------------
+  
+  # Define age groups
+  age_groups = list(
+    'Under 35' = c(0, 34),
+    '35-44'    = c(35, 44),
+    '45-54'    = c(45, 54),
+    '55-64'    = c(55, 64),
+    '65+'      = c(65, 100)
+  )
+  
+  # Calculate present value of future tax adjustments for each taxpayer
+  year_results = year_results %>%
+    mutate(
+      
+      # Calculate total tax adjustment on this year's borrowing
+      tax_adjustment = borrowing_after_exemption * (1 - basis_share) * 0.238 - withholding_tax,
+      
+      # Calculate years until death
+      years_to_death = age_expected_death - age,
+      
+      # Calculate PV of adjustments
+      discount_rate = 0.045,
+      pv_life_adjustment = if_else(
+        years_to_death > 0,
+        tax_adjustment * (1 - prob_hold_to_death) * (1 - (1 + discount_rate)^(-years_to_death)) / (years_to_death * discount_rate),
+        0
+      ),
+      pv_death_adjustment = tax_adjustment * prob_hold_to_death * (1 + discount_rate)^(-years_to_death),
+      
+      # Calculate net tax burden
+      pv_total_adjustment = pv_life_adjustment + pv_death_adjustment,
+      net_tax_burden = withholding_tax + pv_total_adjustment
+    )
+  
+  # Function to calculate percentile groups
+  get_percentile_group = function(x, weights, breaks) {
+    qtiles = wtd.quantile(x, weights, probs = breaks / 100)
+    cut(x, 
+        breaks = c(-Inf, qtiles, Inf),
+        labels = c(0, breaks)
+    )
+  }
+  
+  # Function to calculate metrics for each group
+  calc_group_metrics = function(df, group) {
+    df %>%
+      group_by(!!sym(group)) %>%
+      summarise(
+        n_taxpayers         = sum((net_tax_burden > 0) * weight),
+        share_taxpayers     = weighted.mean(net_tax_burden > 0, weight),
+        avg_tax             = weighted.mean(net_tax_burden, weight),
+        avg_tax_if_positive = weighted.mean(net_tax_burden, weight * (net_tax_burden > 0)),
+        pct_chg_income      = weighted.mean(-net_tax_burden / income, income * weight),
+        .groups = 'drop'
+      )
+  }
+  
+  # Assign groups
+  year_results = year_results %>%  
+    mutate(
+      net_worth     = assets - primary_mortgage - other_mortgage - 
+                      credit_lines - credit_cards - student_loans - 
+                      auto_loans - other_installment - other_debt,
+      person_weight = weight * (1 + married),
+      income_group  = get_percentile_group(income, person_weight, c(20, 40, 60, 80, 90, 95, 99, 99.9)),
+      wealth_group  = get_percentile_group(net_worth, weight, c(20, 40, 60, 80, 90, 95, 99, 99.9)),
+      age_group     = cut(age,
+                          breaks = c(0, 34, 44, 54, 64, 100),
+                          labels = names(age_groups),
+                          include.lowest = TRUE)
+    )
+  
+  # Calculate distributions
+  distributions = list(
+    by_income = calc_group_metrics(year_results, 'income_group'),
+    by_wealth = calc_group_metrics(year_results, 'wealth_group'),
+    by_age    = calc_group_metrics(year_results, 'age_group')
+  )
+  
+  # Create output directory if it doesn't exist
+  dir.create(file.path(file_paths$output_root, 'option_2'), recursive = TRUE, showWarnings = FALSE)
+  
+  # Write each distribution table to a separate CSV
+  for (name in names(distributions)) {
+    distributions[[name]] %>%
+      write_csv(
+        file.path(file_paths$output_root,
+                  'option_2',
+                  paste0('distribution_', name, '_', year_results$year[1], '.csv'))
+      )
+  }
+  
+  return(distributions)
+}
+
+
 

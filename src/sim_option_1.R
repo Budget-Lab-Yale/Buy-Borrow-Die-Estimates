@@ -45,6 +45,9 @@ sim_option_1 = function(augmented_scf, macro_projections, static_totals = NULL) 
     # Calculate record-level taxes
     year_results = calc_tax_option_1(current_scf, year, macro_projections, is.null(static_totals))
     
+    # Calculate and write distribution tables for first year of policy
+    if (year == 2026) get_distribution_option_1(year_results)
+    
     # Calculate and store aggregate statistics
     year_totals = get_totals_option_1(year_results, year)
     totals      = bind_rows(totals, year_totals) 
@@ -415,5 +418,88 @@ get_totals_option_1 = function(year_results, year) {
     )
 }
 
+
+
+get_distribution_option_1 = function(year_results) {
+  
+  #----------------------------------------------------------------------------
+  # Calculates and writes distributional impact of option 1 (deemed 
+  # realization) by income percentile, age group, and wealth percentile.
+  # 
+  # Parameters:
+  # - year_results (df) : microdata results from calc_tax_option_1
+  #
+  # Returns: void.
+  #----------------------------------------------------------------------------
+  
+  # Define age groups
+  age_groups = list(
+    'Under 35' = c(0, 34),
+    '35-44'    = c(35, 44),
+    '45-54'    = c(45, 54),
+    '55-64'    = c(55, 64),
+    '65+'      = c(65, 100)
+  )
+  
+  # Function to calculate percentile groups
+  get_percentile_group = function(x, weights, breaks) {
+    qtiles = wtd.quantile(x, weights, probs = breaks / 100)
+    cut(x, 
+        breaks = c(-Inf, qtiles, Inf),
+        labels = c(0, breaks)
+    )
+  }
+  
+  # Function to calculate metrics for each group
+  calc_group_metrics = function(df, group) {
+    df %>%
+      group_by(!!sym(group)) %>%
+      summarise(
+        n_taxpayers         = sum((borrowing_tax > 0) * weight),
+        share_taxpayers     = weighted.mean(borrowing_tax > 0, weight),
+        avg_tax             = weighted.mean(borrowing_tax, weight),
+        avg_tax_if_positive = weighted.mean(borrowing_tax, weight * (borrowing_tax > 0)),
+        pct_chg_income      = weighted.mean(-borrowing_tax / income, income * weight),
+        .groups = 'drop'
+      )
+  }
+  
+  # Assign groups
+  year_results = year_results %>%  
+    mutate(
+      net_worth     = assets - primary_mortgage - other_mortgage - 
+                      credit_lines - credit_cards - student_loans - 
+                      auto_loans - other_installment - other_debt,
+      person_weight = weight * (1 + married),
+      income_group  = get_percentile_group(income, person_weight, c(20, 40, 60, 80, 90, 95, 99, 99.9)),
+      wealth_group  = get_percentile_group(net_worth, weight, c(20, 40, 60, 80, 90, 95, 99, 99.9)),
+      age_group     = cut(age,
+                          breaks = c(0, 34, 44, 54, 64, 100),
+                          labels = names(age_groups),
+                          include.lowest = TRUE)
+    )
+  
+  # Calculate distributions
+  distributions = list(
+    by_income = calc_group_metrics(year_results, 'income_group'),
+    by_wealth = calc_group_metrics(year_results, 'wealth_group'),
+    by_age    = calc_group_metrics(year_results, 'age_group')
+  )
+  
+  # Create output directory if it doesn't exist
+  dir.create(file.path(file_paths$output_root, 'option_1'), recursive = TRUE, showWarnings = FALSE)
+  
+  # Write each distribution table to a separate CSV
+  for (name in names(distributions)) {
+    distributions[[name]] %>%
+      write_csv(
+        file.path(file_paths$output_root,
+                  'option_1',
+                  paste0('distribution_', name, '_', year_results$year[1], '.csv'))
+      )
+  }
+  
+  return(distributions)
+}
 
 

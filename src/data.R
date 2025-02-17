@@ -512,3 +512,44 @@ impute_expected_death_age = function(augmented_scf) {
     return()
 }
 
+build_dist_tables = function(metrics, options, year) {
+  #----------------------------------------------------------------------------
+  # Combines distributional tables for each option into a single dataframe
+  # for each distribution metric provided.
+  # 
+  # Parameters:
+  # - metrics (vec) : Each distribution metric to be combined across options
+  # - options (vec) : Each reform option across which metrics will be combined
+  # - year    (int) : Year for which distribution was calculated
+  #
+  # Returns: void. Writes new dataframe(s) to output directory.
+  #----------------------------------------------------------------------------
+  
+  dir.create(file.path(file_paths$output_root, 'all_options'), recursive = TRUE, showWarnings = FALSE)
+  
+  for(m in metrics) {
+    
+    options %>% 
+      map(.f = ~ read_csv(file.path(file_paths$output_root, .x, paste0("distribution_by_", m, "_", year, ".csv"))) %>%
+            mutate(
+              option = str_sub(.x, -1, -1)
+            )
+      ) %>%
+      bind_rows() %>%
+      pivot_wider(names_from = option, values_from = c(n_taxpayers, share_taxpayers, avg_tax, avg_tax_if_positive, pct_chg_income)) %>%
+      pivot_longer(!ends_with("group"), names_to = "var", values_to = "val") %>%
+      filter(!is.na(val)) %>%
+      pivot_wider(names_from = var, values_from = val) %>%
+      write_csv(file.path(
+        file_paths$output_root, 
+        "all_options", 
+        paste0("distribution_by_", m, "_", year, ".csv")
+        ))
+  }  
+}
+
+
+
+
+
+

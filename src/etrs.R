@@ -200,6 +200,7 @@ calc_comparative_advantage = function(config) {
 }
 
 
+<<<<<<< HEAD
 1:6 %>%
   map(., .f = ~ calc_comparative_advantage(configs[.x,]) %>%
         mutate(
@@ -210,6 +211,26 @@ calc_comparative_advantage = function(config) {
   select(macro, !macro) %>%
   arrange(borrowing_advatage) %>%
   print(n=30)
+=======
+# tibble(
+#   C = 0.5,
+#   b_share = 1,
+#   b = 0.5,
+#   tau_B = 0.238,
+#   tau_W = 0,
+#   tau_S = 0.238,
+#   tau_D = 0,
+#   tau_e = 0,
+#   n = 10,
+#   r = 0.05,
+#   i  = 0.05,
+#   pi = 0.02
+# ) %>%
+#   calc_delta_etr() %>%
+#   pivot_longer(everything()) %>%
+#   print(n = 50)
+
+>>>>>>> f240960a598b0a1ee0ef6ecdac41299ed0fb6a03
 
 calc_comparative_advantage(.5, 1, .07, .04, .02)
 

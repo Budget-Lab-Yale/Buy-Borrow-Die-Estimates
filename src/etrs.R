@@ -109,7 +109,7 @@ calc_delta_etr = function(df) {
     
     # Calculate tax preference for borrowing (+ -> borrowing is preferred)
     mutate(
-      borrowing_advatage = etr.sell - etr.borrow 
+      borrowing_advantage = etr.sell - etr.borrow 
     ) %>% 
     return()
 }
@@ -189,7 +189,7 @@ calc_comparative_advantage = function(config) {
     map(., 
         .f = ~ calc_delta_etr(scenarios[.x,]) %>%
                select(
-                 id, etr.borrow, etr.sell, borrowing_advatage,
+                 id, etr.borrow, etr.sell, borrowing_advantage,
                  b, n, r, i, pi
                )
         ) %>%
@@ -200,93 +200,76 @@ calc_comparative_advantage = function(config) {
 }
 
 
-<<<<<<< HEAD
-1:6 %>%
-  map(., .f = ~ calc_comparative_advantage(configs[.x,]) %>%
-        mutate(
-          macro = configs[.x, "config"]
-        )
-      ) %>%
-  bind_rows() %>%
-  select(macro, !macro) %>%
-  arrange(borrowing_advatage) %>%
-  print(n=30)
-=======
-# tibble(
-#   C = 0.5,
-#   b_share = 1,
-#   b = 0.5,
-#   tau_B = 0.238,
-#   tau_W = 0,
-#   tau_S = 0.238,
-#   tau_D = 0,
-#   tau_e = 0,
-#   n = 10,
-#   r = 0.05,
-#   i  = 0.05,
-#   pi = 0.02
-# ) %>%
-#   calc_delta_etr() %>%
-#   pivot_longer(everything()) %>%
-#   print(n = 50)
+run_etr_scenarios = function() {
+  base = c(
+    config = "Baseline",
+    b = .5,
+    n = 10,
+    r = .07,
+    i = .04,
+    pi = .02
+  )
+  
+  basis = c(
+    config = "Higher Basis",
+    b = .75,
+    n = 10,
+    r = .07,
+    i = .04,
+    pi = .02
+  )
+  
+  lower_return = c(
+    config = "Lower Return",
+    b = .5,
+    n = 10,
+    r = .02,
+    i = .04,
+    pi = .02
+  )
+  
+  equal = c(
+    config = "Equal RoR and Interest",
+    b = .5,
+    n = 10,
+    r = .05,
+    i = .05,
+    pi = .02
+  )
+  
+  inflation = c(
+    config = "High Inflation",
+    b = .5,
+    n = 10,
+    r = .07,
+    i = .04,
+    pi = .05
+  )
+  
+  death = c(
+    config = "Short Horizon",
+    b = .5,
+    n = 2,
+    r = .07,
+    i = .04,
+    pi = .02
+  )
+  
+  configs = bind_rows(base, basis, lower_return, equal, inflation, death)
+  
+  1:6 %>%
+    map(., .f = ~ calc_comparative_advantage(configs[.x,]) %>%
+          mutate(
+            macro = configs[.x, "config"]
+          )
+    ) %>%
+    bind_rows() %>%
+    select(macro, !macro) %>%
+    #arrange(borrowing_advantage) %>%
+    return()
+}
 
->>>>>>> f240960a598b0a1ee0ef6ecdac41299ed0fb6a03
-
-calc_comparative_advantage(.5, 1, .07, .04, .02)
+run_etr_scenarios()
 
 
-base = c(
-  config = "Baseline",
-  b = .5,
-  n = 10,
-  r = .07,
-  i = .04,
-  pi = .02
-)
 
-basis = c(
-  config = "Higher Basis",
-  b = .75,
-  n = 10,
-  r = .07,
-  i = .04,
-  pi = .02
-)
-
-lower_return = c(
-  config = "Lower Return",
-  b = .5,
-  n = 10,
-  r = .02,
-  i = .04,
-  pi = .02
-)
-
-equal = c(
-  config = "Equal RoR and Interest",
-  b = .5,
-  n = 10,
-  r = .05,
-  i = .05,
-  pi = .02
-)
-
-inflation = c(
-  config = "High Inflation",
-  b = .5,
-  n = 10,
-  r = .07,
-  i = .04,
-  pi = .05
-)
-
-death = c(
-  config = "Short Horizon",
-  b = .5,
-  n = 2,
-  r = .07,
-  i = .04,
-  pi = .02
-)
-
-configs = bind_rows(base, basis, lower_return, equal, inflation, death)

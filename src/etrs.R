@@ -269,7 +269,8 @@ run_etr_scenarios = function() {
     return()
 }
 
-run_etr_scenarios()
+run_etr_scenarios() %>%
+  print(n=24)
 
 
 

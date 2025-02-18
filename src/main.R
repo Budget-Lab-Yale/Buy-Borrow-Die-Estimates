@@ -48,6 +48,7 @@ source('./src/data.R')
 source('./src/estimation.R')
 source('./src/sim_option_1.R')
 source('./src/sim_option_2.R')
+source('./src/sim_option_3.R')
 
 
 # Read macro projections
@@ -74,10 +75,10 @@ augmented_scf = process_scf() %>%
 sims = list(
   option_1 = sim_option_1(augmented_scf, macro_projections), 
   option_2 = sim_option_2(augmented_scf, macro_projections), 
-  option_3 = -1
+  option_3 = sim_option_3(augmented_scf, macro_projections)
 )
 
-sims[1:2] %>% 
+sims[1:3] %>% 
   map(
     .f = ~ .x %>% 
       filter(year <= 2035) %>% 
@@ -96,5 +97,5 @@ source('./src/etrs.R')
 # Build combined distribution tables
 #------------------------------------
 
-build_dist_tables(c("income", "age", "wealth"), c("option_1", "option_2"), 2026)
+build_dist_tables(c("income", "age", "wealth"), c("option_1", "option_2", "option_3"), 2026)
 

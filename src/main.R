@@ -78,6 +78,10 @@ sims = list(
   option_3 = sim_option_3(augmented_scf, macro_projections)
 )
 
+
+# Build combined distribution tables
+build_dist_tables(c('income', 'age', 'wealth'), c('option_1', 'option_2', 'option_3'), 2026)
+
 sims[1:3] %>% 
   map(
     .f = ~ .x %>% 
@@ -94,8 +98,8 @@ sims[1:3] %>%
 source('./src/etrs.R')
 
 #------------------------------------
-# Build combined distribution tables
+
 #------------------------------------
 
-build_dist_tables(c("income", "age", "wealth"), c("option_1", "option_2", "option_3"), 2026)
+
 

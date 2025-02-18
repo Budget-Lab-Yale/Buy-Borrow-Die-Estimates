@@ -80,7 +80,7 @@ calc_tax_option_3 = function(current_scf, year, static) {
     mutate(
       year = !!year,
       
-      excise_tax = positive_taxable_borrowing * excise_rate
+      excise_tax = taxable_debt * excise_rate
     ) %>%
     return()
 }
@@ -130,7 +130,7 @@ do_avoidance_option_3 = function(current_scf, year, static) {
     
       # First, calculate marginal rate on a new dollar of borrowing
       tax  = calc_tax_option_3(current_scf, year, T)$excise_tax, 
-      tax1 = calc_tax_option_3(current_scf %>% mutate(positive_taxable_borrowing = positive_taxable_borrowing + 1), year, T)$excise_tax,
+      tax1 = calc_tax_option_3(current_scf %>% mutate(taxable_debt = taxable_debt + 1), year, T)$excise_tax,
       mtr  = tax1 - tax, 
     
       # Express as tax-price wedge
@@ -140,7 +140,7 @@ do_avoidance_option_3 = function(current_scf, year, static) {
       percent_shifted = tax_price * elasticity,
       
       # For pass-through owners, reduce taxable borrowing by sheltering rate
-      positive_taxable_borrowing = positive_taxable_borrowing * (1 - percent_shifted * pass_through_owner)
+      taxable_debt = taxable_debt * (1 - percent_shifted * pass_through_owner)
       
     ) %>%
       select(-percent_shifted) %>% 
@@ -167,7 +167,7 @@ get_totals_option_3 = function(year_results, year) {
       unrealized_kg = sum((kg_pass_throughs + kg_other) * weight) / 1e9,
       
       # Total positive borrowing
-      taxable_positive_net_borrowing = sum(positive_taxable_borrowing * weight) / 1e9,
+      taxable_positive_net_borrowing = sum(taxable_debt * weight) / 1e9,
       
       # Borrowing net of exemption
       taxable_borrowing_after_exemption = taxable_positive_net_borrowing,

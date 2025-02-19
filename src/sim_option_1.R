@@ -463,7 +463,7 @@ get_totals_option_1 = function(year_results, year) {
   #   - year_results (df) : record-level results from calc_option_1_tax
   #   - year        (int) : current simulation year
   #
-  # Output: TODO
+  # Output: list of initial-year totals and future revenue offsets (list).
   #----------------------------------------------------------------------------
   
   totals = year_results %>%

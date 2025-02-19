@@ -108,7 +108,7 @@ calc_tax_option_3 = function(current_scf, year, static) {
       years_left = age_expected_death - age,
       tax_adjustment = if_else(
         years_left > 0,
-        excise_tax * years_left,
+        excise_tax,
         0
       )
     ) %>%

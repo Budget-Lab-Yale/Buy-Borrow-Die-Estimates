@@ -165,7 +165,7 @@ calc_tax_option_1 = function(current_scf, year, macro_projections, static) {
     expand_grid(years_forward = 1:75) %>%  
     filter(age + years_forward <= age_expected_death) %>% 
     
-    # For gains not held to death, spread tax evenly over remaining years
+    # Prevent double counting by removing tax on would-be realizations
     mutate(
       years_left = age_expected_death - age,
       tax_adjustment = if_else(

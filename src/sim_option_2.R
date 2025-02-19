@@ -158,19 +158,27 @@ calc_tax_option_2 = function(current_scf, year, macro_projections, static) {
       # Calculate tax adjustment: an extra tax if withholding was less than unrealized gains, a refund if more
       total_adjustment = total_kg_tax - withholding_tax,
       
-      # For gains not held to death, spread tax evenly over remaining years
+      # Actual tax adjustment: calculate tax/credit against realizations during life
       tax_adjustment = if_else(
         years_left > 0,
         total_adjustment * (1 - share_death) / years_left,
         0
       ),
       
-      # Add death portion in death year
+      # Actual tax adjustment: calculate tax/credit at death 
       tax_adjustment = tax_adjustment + if_else(
         year + years_forward == age_expected_death,
         total_adjustment * share_death,
         0
+      ), 
+      
+      # Prevent double counting by removing tax on would-be realizations
+      tax_adjustment = tax_adjustment + if_else(
+        years_left > 0, 
+        -total_kg_tax * (1 - share_death) / years_left,
+        0 
       )
+      
     ) %>%
     
     # Reshape wide in payment year

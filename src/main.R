@@ -82,7 +82,7 @@ sims = list(
 # Build combined distribution tables
 build_dist_tables(c('income', 'age', 'wealth'), c('option_1', 'option_2', 'option_3'), 2026)
 
-sims[1:3] %>% 
+sims %>% 
   map(
     .f = ~ .x %>% 
       filter(year <= 2035) %>% 

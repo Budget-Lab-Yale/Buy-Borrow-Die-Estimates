@@ -165,7 +165,7 @@ calc_tax_option_1 = function(current_scf, year, macro_projections, static) {
     expand_grid(years_forward = 1:75) %>%  
     filter(age + years_forward <= age_expected_death) %>% 
     
-    # For gains not held to death, spread tax evenly over remaining years
+    # Prevent double counting by removing tax on would-be realizations
     mutate(
       years_left = age_expected_death - age,
       tax_adjustment = if_else(
@@ -463,7 +463,7 @@ get_totals_option_1 = function(year_results, year) {
   #   - year_results (df) : record-level results from calc_option_1_tax
   #   - year        (int) : current simulation year
   #
-  # Output: TODO
+  # Output: list of initial-year totals and future revenue offsets (list).
   #----------------------------------------------------------------------------
   
   totals = year_results %>%

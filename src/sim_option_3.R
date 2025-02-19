@@ -65,6 +65,8 @@ sim_option_3 = function(augmented_scf, macro_projections, static_totals = NULL) 
   }
 }
 
+
+
 calc_tax_option_3 = function(current_scf, year, static) {
   
   #----------------------------------------------------------------------------
@@ -81,6 +83,7 @@ calc_tax_option_3 = function(current_scf, year, static) {
   #----------------
   # Set parameters
   #----------------
+
   # Define tax law parameters
   excise_rate = 0.01
   
@@ -131,6 +134,8 @@ calc_tax_option_3 = function(current_scf, year, static) {
     return()
 }
 
+
+
 calc_pv_tax_option_3 = function(year_results) {
   
   #----------------------------------------------------------------------------
@@ -168,6 +173,7 @@ calc_pv_tax_option_3 = function(year_results) {
     return()
 }
 
+
 calc_mtr_option_3 = function(current_scf, year, macro_projections) {
   
   #----------------------------------------------------------------------------
@@ -199,11 +205,12 @@ calc_mtr_option_3 = function(current_scf, year, macro_projections) {
   return(plus_one_dollar$pv_tax_change - actual$pv_tax_change)
 }
 
+
 do_avoidance_option_3 = function(current_scf, year, static) {
   
   #----------------------------------------------------------------------------
-  # Applies avoidance responses to positive taxable borrowing, including both
-  # business sheltering and intertemporal smoothing. 
+  # Applies avoidance responses to taxable debt, including both business 
+  # sheltering and intertemporal smoothing. 
   # 
   # 
   # Parameters:
@@ -254,9 +261,11 @@ do_avoidance_option_3 = function(current_scf, year, static) {
       taxable_debt = taxable_debt * (1 - percent_shifted * pass_through_owner)
       
     ) %>%
-      select(-percent_shifted) %>% 
-      return()
+    select(-percent_shifted) %>% 
+    return()
 }
+
+
 
 get_totals_option_3 = function(year_results, year) {
   
@@ -307,6 +316,8 @@ get_totals_option_3 = function(year_results, year) {
   )
 }
 
+
+
 get_distribution_option_3 = function(year_results) {
   
   #----------------------------------------------------------------------------
@@ -356,8 +367,8 @@ get_distribution_option_3 = function(year_results) {
     left_join(calc_pv_tax_option_3(year_results), by = 'id') %>%
     mutate(
       net_worth     = assets - primary_mortgage - other_mortgage - 
-        credit_lines - credit_cards - student_loans - 
-        auto_loans - other_installment - other_debt,
+                      credit_lines - credit_cards - student_loans - 
+                      auto_loans - other_installment - other_debt,
       person_weight = weight * (1 + married),
       income_group  = get_percentile_group(income, person_weight, c(20, 40, 60, 80, 90, 95, 99, 99.9)),
       wealth_group  = get_percentile_group(net_worth, weight, c(20, 40, 60, 80, 90, 95, 99, 99.9)),
@@ -375,15 +386,15 @@ get_distribution_option_3 = function(year_results) {
   )
   
   # Create output directory if it doesn't exist
-  dir.create(file.path(file_paths$output_root, "option_3"), recursive = TRUE, showWarnings = FALSE)
+  dir.create(file.path(file_paths$output_root, 'option_3'), recursive = TRUE, showWarnings = FALSE)
   
   # Write each distribution table to a separate CSV
   for (name in names(distributions)) {
     distributions[[name]] %>%
       write_csv(
         file.path(file_paths$output_root,
-                  "option_3",
-                  paste0("distribution_", name, "_", year_results$year[1], ".csv"))
+                  'option_3',
+                  paste0('distribution_', name, '_', year_results$year[1], '.csv'))
       )
   }
   

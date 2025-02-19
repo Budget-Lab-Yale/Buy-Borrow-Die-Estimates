@@ -24,7 +24,6 @@ sim_option_3 = function(augmented_scf, macro_projections, static_totals = NULL) 
   
   # Initialize tracking objects
   totals         = tibble()
-  revenue_offset = tibble()
   current_scf    = augmented_scf
   
   # For each projection year
@@ -46,12 +45,13 @@ sim_option_3 = function(augmented_scf, macro_projections, static_totals = NULL) 
     
     # Calculate and store aggregate statistics
     year_totals = get_totals_option_3(year_results, year)
-    totals = bind_rows(totals, year_totals)
-
+    totals = bind_rows(totals, year_totals$totals)
   }
+  
   
   # Calculate net revenue effect and return
   totals = totals %>%
+    #totals %>%
     mutate(net_revenue = excise_tax) %>%
     mutate(static = is.null(static_totals), .before = everything())
   
@@ -70,21 +70,25 @@ sim_option_3 = function(augmented_scf, macro_projections, static_totals = NULL) 
 calc_tax_option_3 = function(current_scf, year, static) {
   
   #----------------------------------------------------------------------------
-  # Calculates excise tax liability under option 3.
+  # Calculates tax liability under option 3 (excise tax on borrowing).
   # 
   # Parameters:
-  #   - current_scf       (df)   : SCF+ data projected through given year
-  #   - year              (int)  : year of tax calculation
-  #   - static            (bool) : whether running without avoidance
+  #   - current_scf        (df) : SCF+ data projected through given year
+  #   - year              (int) : year of tax calculation
+  #   - static           (bool) : whether running without avoidance
   #
-  # Output: processed SCF with tax calculations
+  # Output: processed 2022 SCF (df).
   #----------------------------------------------------------------------------
   
+  #----------------
+  # Set parameters
+  #----------------
+
   # Define tax law parameters
   excise_rate = 0.01
   
   # Start with SCF...
-  current_scf %>%
+  initial_tax = current_scf %>%
     
     # Do avoidance if non-static
     do_avoidance_option_3(year, static) %>%
@@ -95,9 +99,111 @@ calc_tax_option_3 = function(current_scf, year, static) {
       
       excise_tax = taxable_debt * excise_rate
     ) %>%
+    select(id, year, excise_tax) 
+  
+  tax_adjustments = current_scf %>%
+    left_join(initial_tax, by = 'id') %>%
+    filter(excise_tax > 0) %>%
+    select(id, age, age_expected_death, excise_tax, weight, year) %>%
+    expand_grid(years_forward = 1:75) %>%
+    filter(age + years_forward <= age_expected_death) %>%
+    mutate(
+      years_left = age_expected_death - age,
+      tax_adjustment = if_else(
+        years_left > 0,
+        excise_tax,
+        0
+      )
+    ) %>%
+    select(id, years_forward, tax_adjustment) %>%
+    pivot_wider(
+      names_from   = years_forward,
+      names_prefix = 'tax_adjustment.',
+      values_from  = tax_adjustment
+    )
+  
+  current_scf %>%
+    left_join(initial_tax, by = 'id') %>%
+    left_join(tax_adjustments, by = 'id') %>%
+    mutate(
+      across(
+        .cols = starts_with('tax_adjustment.'),
+        .fns = ~ replace_na(., 0)
+      )
+    ) %>%
     return()
 }
 
+
+
+calc_pv_tax_option_3 = function(year_results) {
+  
+  #----------------------------------------------------------------------------
+  # Calculates the present value of tax changes under option 3 by combining 
+  # the initial tax payment with discounted future tax adjustments. Uses a 
+  # 4.5% discount rate.
+  # 
+  # Parameters:
+  #   - year_results (df) : record-level results from calc_tax_option_3
+  #
+  # Output: PV of tax change (df). 
+  #----------------------------------------------------------------------------
+  
+  # Calculate present value of future tax adjustments
+  pv_tax_adjustments = year_results %>%
+    select(id, starts_with('tax_adjustment.')) %>%
+    pivot_longer(
+      cols            = starts_with('tax_adjustment.'),
+      names_prefix    = 'tax_adjustment.', 
+      names_transform = as.integer, 
+      names_to        = 't'
+    ) %>% 
+    filter(value != 0) %>% 
+    mutate(pv = value / (1.045 ^ t)) %>% 
+    group_by(id) %>% 
+    summarise(pv_tax_adjustments = sum(pv))
+  
+  # Combine with initial tax on borrowing and return
+  year_results %>% 
+    left_join(pv_tax_adjustments, by = 'id') %>% 
+    mutate(
+      pv_tax_change = excise_tax + replace_na(pv_tax_adjustments, 0)
+    ) %>%
+    select(id, pv_tax_change) %>% 
+    return()
+}
+
+
+calc_mtr_option_3 = function(current_scf, year, macro_projections) {
+  
+  #----------------------------------------------------------------------------
+  # Calculates the marginal tax rate under option 3 by comparing the present 
+  # value of tax liability with and without an additional dollar of borrowing. 
+  # Used for behavioral response calculations.
+  # 
+  # Parameters:
+  #   - current_scf       (df)  : SCF+ data projected through given year
+  #   - year             (int)  : year of tax calculation
+  #   - macro_projections (lst) : economic and demographic projections
+  #                              (see read_macro_projections)
+  #
+  # Output: vector of marginal tax rates for each taxpayer (dbl).
+  #----------------------------------------------------------------------------
+  
+  
+  # Calculate current PV of tax
+  actual = current_scf %>% 
+    calc_tax_option_3(., year, T) %>% 
+    calc_pv_tax_option_3()
+  
+  # Calculate counterfactually higher borrowing
+  plus_one_dollar = current_scf %>% 
+    mutate(taxable_debt = taxable_debt + 1) %>% 
+    calc_tax_option_3(., year, T) %>% 
+    calc_pv_tax_option_3()
+  
+  return(plus_one_dollar$pv_tax_change - actual$pv_tax_change)
+}
 
 
 do_avoidance_option_3 = function(current_scf, year, static) {
@@ -110,7 +216,6 @@ do_avoidance_option_3 = function(current_scf, year, static) {
   # Parameters:
   #   - current_scf        (df) : SCF+ data projected through given year
   #   - year              (int) : year of tax calculation
-  #   - exemption         (dbl) : borrowing exemption threshold for this year 
   #   - macro_projections (lst) : economic and demographic projections 
   #                               (see read_macro_projections)
   #   - static           (bool) : whether running without avoidance
@@ -144,9 +249,7 @@ do_avoidance_option_3 = function(current_scf, year, static) {
     mutate(
     
       # First, calculate marginal rate on a new dollar of borrowing
-      tax  = calc_tax_option_3(current_scf, year, T)$excise_tax, 
-      tax1 = calc_tax_option_3(current_scf %>% mutate(taxable_debt = taxable_debt + 1), year, T)$excise_tax,
-      mtr  = tax1 - tax, 
+      mtr  = calc_mtr_option_3(current_scf, year, macro_projections), 
     
       # Express as tax-price wedge
       tax_price = 1 / (1 - mtr) - 1,
@@ -176,18 +279,12 @@ get_totals_option_3 = function(year_results, year) {
   # Output: dataframe with aggregated results
   #----------------------------------------------------------------------------
   
-  year_results %>%
+  totals = year_results %>%
     summarise(
       year = !!year,
       
-      # Total unrealized gains eligible for future credits
-      unrealized_kg = sum((kg_pass_throughs + kg_other) * weight) / 1e9,
-      
       # Total positive borrowing
-      taxable_positive_net_borrowing = sum(taxable_debt * weight) / 1e9,
-      
-      # Borrowing net of exemption
-      taxable_borrowing_after_exemption = taxable_positive_net_borrowing,
+      taxable_debt = sum(taxable_debt * weight) / 1e9,
       
       # Number of taxpayers
       n_taxpayers = sum((excise_tax > 0) * weight),
@@ -196,6 +293,27 @@ get_totals_option_3 = function(year_results, year) {
       # Withholding tax revenue in billions
       excise_tax = sum(excise_tax * weight) / 1e9
     )
+  
+  # Calculate total future tax adjustments
+  revenue_offset = year_results %>% 
+    select(id, weight, starts_with('tax_adjustment')) %>% 
+    pivot_longer(
+      cols            = starts_with('tax_adjustment.'),
+      names_prefix    = 'tax_adjustment.', 
+      names_transform = as.integer, 
+      names_to        = 't'
+    ) %>% 
+    filter(value != 0) %>% 
+    mutate(year = year + t) %>% 
+    group_by(initial_year = !!year, year) %>% 
+    summarise(revenue_offset = sum(value * weight) / 1e9, .groups = 'drop')
+  
+  return(
+    list(
+      totals         = totals,
+      revenue_offset = revenue_offset
+    )
+  )
 }
 
 
@@ -235,17 +353,18 @@ get_distribution_option_3 = function(year_results) {
     df %>%
       group_by(!!sym(group)) %>%
       summarise(
-        n_taxpayers          = sum((excise_tax > 0) * weight),
-        share_taxpayers      = weighted.mean(excise_tax > 0, weight),
-        avg_tax             = weighted.mean(excise_tax, weight),
-        avg_tax_if_positive = weighted.mean(excise_tax, weight * (excise_tax > 0)),
-        pct_chg_income      = weighted.mean(-excise_tax / income, income * weight),
+        n_taxpayers          = sum((pv_tax_change > 0) * weight),
+        share_taxpayers      = weighted.mean(pv_tax_change > 0, weight),
+        avg_tax             = weighted.mean(pv_tax_change, weight),
+        avg_tax_if_positive = weighted.mean(pv_tax_change, weight * (pv_tax_change > 0)),
+        pct_chg_income      = weighted.mean(-pv_tax_change / income, income * weight),
         .groups = 'drop'
       )
   }
   
   # Assign groups
   year_results = year_results %>%
+    left_join(calc_pv_tax_option_3(year_results), by = 'id') %>%
     mutate(
       net_worth     = assets - primary_mortgage - other_mortgage - 
                       credit_lines - credit_cards - student_loans - 

@@ -64,7 +64,7 @@ calc_etr = function(df) {
       
       # Calculate ETR
       pv_V_notax = (1 - C * (1 - b_share)) * exp((r - i) * n) - (C * b_share),
-      etr        = 1 - (C + pv_V) / (C + pv_V_notax)
+      etr = (pv_V_notax - pv_V) / C
       
     ) %>% 
     return()
@@ -125,7 +125,7 @@ calc_comparative_advantage = function(config) {
   
   baseline = tibble(
     id = "baseline",
-    C = 0.5,
+    C = 0.01,
     b = b,
     tau_B = 0,
     tau_W = 0,
@@ -140,7 +140,7 @@ calc_comparative_advantage = function(config) {
   
   option_1 = tibble(
     id = "Option 1",
-    C = 0.5,
+    C = 0.01,
     b = b,
     tau_B = 0.238,
     tau_W = 0,
@@ -155,7 +155,7 @@ calc_comparative_advantage = function(config) {
   
   option_2 = tibble(
     id = "Option 2",
-    C = 0.5,
+    C = 0.01,
     b = b,
     tau_B = 0,
     tau_W = 0.1,
@@ -170,7 +170,7 @@ calc_comparative_advantage = function(config) {
   
   option_3 = tibble(
     id = "Option 3",
-    C = 0.5,
+    C = 0.01,
     b = b,
     tau_B = 0,
     tau_W = 0,
@@ -203,59 +203,52 @@ calc_comparative_advantage = function(config) {
 run_etr_scenarios = function() {
   base = c(
     config = "Baseline",
-    b = .5,
-    n = 10,
-    r = .07,
-    i = .04,
+    b = 0.56,
+    n = 21,
+    r = .03,
+    i = .03,
     pi = .02
   )
   
-  basis = c(
+  high_basis = c(
     config = "Higher Basis",
-    b = .75,
-    n = 10,
-    r = .07,
-    i = .04,
+    b = .9,
+    n = 21,
+    r = .03,
+    i = .03,
     pi = .02
   )
   
-  lower_return = c(
-    config = "Lower Return",
-    b = .5,
-    n = 10,
-    r = .02,
-    i = .04,
+  
+  low_basis = c(
+    config = "Higher Basis",
+    b = .1,
+    n = 21,
+    r = .03,
+    i = .03,
     pi = .02
   )
   
-  equal = c(
-    config = "Equal RoR and Interest",
-    b = .5,
-    n = 10,
-    r = .05,
-    i = .05,
-    pi = .02
-  )
   
-  inflation = c(
-    config = "High Inflation",
-    b = .5,
-    n = 10,
-    r = .07,
-    i = .04,
-    pi = .05
+  life = c(
+    config = "Long Horizon",
+    b = 0.56,
+    n = 50,
+    r = .03,
+    i = .03,
+    pi = .02
   )
   
   death = c(
     config = "Short Horizon",
-    b = .5,
-    n = 2,
-    r = .07,
-    i = .04,
+    b = 0.56,
+    n = 5,
+    r = .03,
+    i = .03,
     pi = .02
   )
   
-  configs = bind_rows(base, basis, lower_return, equal, inflation, death)
+  configs = bind_rows(base, high_basis, low_basis, life, death)
   
   1:6 %>%
     map(., .f = ~ calc_comparative_advantage(configs[.x,]) %>%
@@ -270,7 +263,26 @@ run_etr_scenarios = function() {
 }
 
 run_etr_scenarios() %>%
+  mutate(across(.cols = c(etr.borrow, etr.sell, borrowing_advantage), .fns = ~ round(., 3))) %>% 
   print(n=24)
 
+
+
+
+#--------------------------------
+# Estimation of parameter values
+#--------------------------------
+
+process_scf() %>% 
+  impute_expected_death_age() %>% 
+  filter(assets > 50e6, credit_lines + other_debt + other_mortgage > 0) %>% 
+  mutate(
+    basis_share = pmin(1, pmax(0, 1 - if_else(assets > 0, (kg_primary_home + kg_other_re + kg_pass_throughs + kg_other) / assets, 1)))
+  ) %>% 
+  summarise(
+    life_expectancy = weighted.mean(age_expected_death - age, weight), 
+    basis_share = weighted.mean(basis_share, weight)
+  )
+  
 
 

@@ -85,7 +85,7 @@ calc_tax_option_3 = function(current_scf, year, static) {
   #----------------
 
   # Define tax law parameters
-  excise_rate = 0.01
+  excise_rate = 0.005
   
   # Start with SCF...
   initial_tax = current_scf %>%

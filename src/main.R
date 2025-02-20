@@ -85,7 +85,7 @@ build_dist_tables(c('income', 'age', 'wealth'), c('option_1', 'option_2', 'optio
 sims %>% 
   map(
     .f = ~ .x %>% 
-      filter(year <= 2035) %>% 
+      filter(year <= 2035) %>%
       group_by(static) %>% 
       summarise(sum(net_revenue))
   )

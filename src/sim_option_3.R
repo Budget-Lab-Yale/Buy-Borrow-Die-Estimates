@@ -353,18 +353,17 @@ get_distribution_option_3 = function(year_results) {
     df %>%
       group_by(!!sym(group)) %>%
       summarise(
-        n_taxpayers          = sum((pv_tax_change > 0) * weight),
-        share_taxpayers      = weighted.mean(pv_tax_change > 0, weight),
-        avg_tax             = weighted.mean(pv_tax_change, weight),
-        avg_tax_if_positive = weighted.mean(pv_tax_change, weight * (pv_tax_change > 0)),
-        pct_chg_income      = weighted.mean(-pv_tax_change / income, income * weight),
+        n_taxpayers         = sum((excise_tax > 0) * weight),
+        share_taxpayers     = weighted.mean(excise_tax > 0, weight),
+        avg_tax             = weighted.mean(excise_tax, weight),
+        avg_tax_if_positive = weighted.mean(excise_tax, weight * (excise_tax > 0)),
+        pct_chg_income      = weighted.mean(-excise_tax / income, income * weight),
         .groups = 'drop'
       )
   }
   
   # Assign groups
   year_results = year_results %>%
-    left_join(calc_pv_tax_option_3(year_results), by = 'id') %>%
     mutate(
       net_worth     = assets - primary_mortgage - other_mortgage - 
                       credit_lines - credit_cards - student_loans - 

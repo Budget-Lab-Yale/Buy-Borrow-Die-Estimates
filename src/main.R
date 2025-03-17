@@ -82,24 +82,9 @@ sims = list(
 # Build combined distribution tables
 build_dist_tables(c('income', 'age', 'wealth'), c('option_1', 'option_2', 'option_3'), 2026)
 
-sims %>% 
-  map(
-    .f = ~ .x %>% 
-      filter(year <= 2035) %>%
-      group_by(static) %>% 
-      summarise(sum(net_revenue))
-  )
-
 
 #------------------------------------
 # Calculate tax rate differentials
 #------------------------------------
 
 source('./src/etrs.R')
-
-#------------------------------------
-
-#------------------------------------
-
-
-
